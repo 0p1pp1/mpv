@@ -1705,10 +1705,14 @@ static void thread_demux_control(void *p)
             r = CONTROL_OK;
     }
     if (r != CONTROL_OK) {
-        if (in->threading)
+        if (in->threading) {
             MP_VERBOSE(demuxer, "blocking for DEMUXER_CTRL %d\n", cmd);
+            pthread_mutex_unlock(&in->lock);
+        }
         if (demuxer->desc->control)
             r = demuxer->desc->control(demuxer->in->d_thread, cmd, arg);
+        if (in->threading)
+            pthread_mutex_lock(&in->lock);
     }
 
     *args->r = r;
