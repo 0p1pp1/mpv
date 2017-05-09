@@ -87,6 +87,8 @@ enum demux_event {
     DEMUX_EVENT_STREAMS = 1 << 1,   // a stream was added
     DEMUX_EVENT_METADATA = 1 << 2,  // metadata or stream_metadata changed
     DEMUX_EVENT_DURATION = 1 << 3,  // duration updated
+    // one of the selected streams was deactivated, due to a PMT change for ex.
+    DEMUX_EVENT_NOSTREAM = 1 << 12,
     DEMUX_EVENT_ALL = 0xFFFF,
 };
 
@@ -302,6 +304,8 @@ void demuxer_select_track(struct demuxer *demuxer, struct sh_stream *stream,
                           double ref_pts, bool selected);
 void demuxer_refresh_track(struct demuxer *demuxer, struct sh_stream *stream,
                            double ref_pts);
+void demux_activate_stream(struct demuxer *demuxer, struct sh_stream *stream,
+                           bool selected);
 
 int demuxer_help(struct mp_log *log, const m_option_t *opt, struct bstr name);
 
@@ -327,6 +331,9 @@ bool demux_is_network_cached(demuxer_t *demuxer);
 
 void demux_report_unbuffered_read_bytes(struct demuxer *demuxer, int64_t new);
 int64_t demux_get_bytes_read_hack(struct demuxer *demuxer);
+
+void demux_set_event(demuxer_t *demuxer, enum demux_event event);
+int demux_get_event(demuxer_t *demuxer);
 
 struct sh_stream *demuxer_stream_by_demuxer_id(struct demuxer *d,
                                                enum stream_type t, int id);
