@@ -152,6 +152,7 @@ struct format_hack {
     bool no_pcm_seek : 1;
     bool no_seek_on_no_duration : 1;
     bool readall_on_no_streamseek : 1;
+    bool check_pids : 1;        // pids may dismiss in the midst of stream
 };
 
 #define BLACKLIST(fmt) {fmt, .ignore = true}
@@ -171,7 +172,7 @@ static const struct format_hack format_hacks[] = {
     {"dash", .no_stream = true, .clear_filepos = true},
     {"sdp", .clear_filepos = true, .is_network = true, .no_seek = true},
     {"mpeg", .use_stream_ids = true},
-    {"mpegts", .use_stream_ids = true},
+    {"mpegts", .use_stream_ids = true, .check_pids = true},
     {"mxf", .use_stream_ids = true},
     {"avi", .use_stream_ids = true},
     {"asf", .use_stream_ids = true},
@@ -236,6 +237,7 @@ typedef struct lavf_priv {
     int num_streams;
     int cur_program;
     bool new_prog_set;
+    bool in_track_pivot;
     char *mime_type;
     double seek_delay;
 
@@ -585,6 +587,7 @@ static void select_tracks(struct demuxer *demuxer, int start)
         AVStream *st = priv->avfc->streams[n];
         bool selected = stream && demux_stream_is_selected(stream) &&
                         !stream->attached_picture;
+        selected |= priv->format_hack.check_pids;
         st->discard = selected ? AVDISCARD_DEFAULT : AVDISCARD_ALL;
     }
 }
@@ -790,16 +793,15 @@ static void handle_new_stream(demuxer_t *demuxer, int i)
     default: ;
     }
 
-    struct stream_info *info = talloc_zero(priv, struct stream_info);
-    *info = (struct stream_info){
+    *(priv->streams[i]) = (struct stream_info){
         .sh = sh,
         .last_key_pts = MP_NOPTS_VALUE,
         .highest_pts = MP_NOPTS_VALUE,
     };
-    assert(priv->num_streams == i); // directly mapped
-    MP_TARRAY_APPEND(priv, priv->streams, priv->num_streams, info);
 
     if (sh) {
+        MP_VERBOSE(demuxer, "adding/updating stream info for pid:%04x %d\n",
+                   st->id, codec->codec_type);
         sh->ff_index = st->index;
         sh->codec->codec = mp_codec_from_av_codec_id(codec->codec_id);
         sh->codec->codec_tag = codec->codec_tag;
@@ -861,12 +863,61 @@ static void handle_new_stream(demuxer_t *demuxer, int i)
     select_tracks(demuxer, i);
 }
 
+static void check_pid_change(demuxer_t *demuxer)
+{
+    lavf_priv_t *priv = demuxer->priv;
+    int i;
+
+    if (!priv->format_hack.check_pids || priv->avfc->nb_programs < 1)
+        return;
+
+    // bypass pid check
+    if (demux_get_event(demuxer) & DEMUX_EVENT_NOSTREAM)
+        return;
+
+    // TODO: check/detect PMT change to issue _NOSTREAM event
+    for (i=0; i < priv->num_streams; i++) {
+        struct stream_info *si;
+        struct sh_stream *sh;
+
+        si = priv->streams[i];
+        if (!si)
+            continue;
+        sh = si->sh;
+        if (!demux_stream_is_selected(sh))
+            continue;
+        if (!(sh->type == STREAM_VIDEO || sh->type == STREAM_AUDIO))
+            continue;
+        if (av_find_program_from_stream(priv->avfc, NULL, sh->ff_index))
+            continue;
+        if (!priv->in_track_pivot) {
+            MP_INFO(demuxer, "LOST PID! %04x\n", sh->demuxer_id);
+        }
+        demux_set_event(demuxer, DEMUX_EVENT_NOSTREAM);
+        priv->in_track_pivot = true;
+        break;
+    }
+    if (i == priv->num_streams)
+        priv->in_track_pivot = false;
+    return;
+}
+
 // Add any new streams that might have been added
 static void add_new_streams(demuxer_t *demuxer)
 {
     lavf_priv_t *priv = demuxer->priv;
-    while (priv->num_streams < priv->avfc->nb_streams)
-        handle_new_stream(demuxer, priv->num_streams);
+
+    for (int i = 0; i < priv->num_streams; i++)
+        if (priv->streams[i] && !priv->streams[i]->sh
+            && priv->avfc->streams[i]->codecpar->codec_type != AVMEDIA_TYPE_UNKNOWN
+            && priv->avfc->streams[i]->codecpar->codec_type != AVMEDIA_TYPE_DATA)
+            handle_new_stream(demuxer, i);
+
+    while (priv->num_streams < priv->avfc->nb_streams) {
+        struct stream_info *info = talloc_zero(priv, struct stream_info);
+        MP_TARRAY_APPEND(priv, priv->streams, priv->num_streams, info);
+        handle_new_stream(demuxer, priv->num_streams - 1);
+    }
 }
 
 static void update_metadata(demuxer_t *demuxer)
@@ -1209,6 +1260,7 @@ static bool demux_lavf_read_packet(struct demuxer *demux,
     priv->retry_counter = 0;
 
     add_new_streams(demux);
+    check_pid_change(demux);
     update_metadata(demux);
 
     assert(pkt->stream_index >= 0 && pkt->stream_index < priv->num_streams);
@@ -1429,7 +1481,14 @@ redo:
     v_sh = a_sh = s_sh = NULL;
     program = priv->avfc->programs[p];
     for (i = 0; i < program->nb_stream_indexes; i++) {
-        struct stream_info *stream = priv->streams[program->stream_index[i]];
+        int idx = program->stream_index[i];
+        struct stream_info *stream;
+
+        if (idx >= priv->num_streams) {
+            MP_VERBOSE(demuxer, "PMT of prog:%d may not be ready yet.\n", program->id);
+            return false;
+        }
+        stream = priv->streams[idx];
         if (stream && stream->sh) {
             switch (stream->sh->type) {
             case STREAM_VIDEO:
