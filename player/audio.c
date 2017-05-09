@@ -852,6 +852,11 @@ void fill_audio_out_buffers(struct MPContext *mpctx)
     if (ao_c->filter->ao_needs_update)
         reinit_audio_filters_and_output(mpctx);
 
+    if (!mpctx->next_track[STREAM_AUDIO] && mpctx->next_track[STREAM_VIDEO]) {
+        MP_TRACE(mpctx, "waiting for video pid switch to catch up audio's.\n");
+        return;
+    }
+
     if (mpctx->vo_chain && ao_c->track && ao_c->track->dec &&
         mp_decoder_wrapper_get_pts_reset(ao_c->track->dec))
     {
