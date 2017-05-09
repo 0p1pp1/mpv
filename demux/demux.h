@@ -226,7 +226,12 @@ typedef struct demuxer {
 typedef struct {
     int progid;      //program id
     int aid, vid, sid; //audio, video and subtitle id
+    char **vlangs;
+    char **alangs;
+    char **slangs;
 } demux_program_t;
+// try to select the currently selected program if possible
+#define PROGID_KEEP_CURRENT -2
 
 void free_demuxer(struct demuxer *demuxer);
 void free_demuxer_and_stream(struct demuxer *demuxer);
