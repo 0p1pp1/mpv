@@ -1484,15 +1484,16 @@ struct sh_stream *demuxer_stream_by_demuxer_id(struct demuxer *d,
 // Set whether the given stream should return packets.
 // ref_pts is used only if the stream is enabled. Then it serves as approximate
 // start pts for this stream (in the worst case it is ignored).
-void demuxer_select_track(struct demuxer *demuxer, struct sh_stream *stream,
-                          double ref_pts, bool selected)
+static void _select_track_n(struct demuxer *demuxer, struct sh_stream *stream,
+                            double ref_pts, bool selected, bool keep_pkts)
 {
     struct demux_internal *in = demuxer->in;
     pthread_mutex_lock(&in->lock);
     // don't flush buffers if stream is already selected / unselected
     if (stream->ds->selected != selected) {
         stream->ds->selected = selected;
-        ds_flush(stream->ds);
+        if (!keep_pkts)
+            ds_flush(stream->ds);
         in->tracks_switched = true;
         stream->ds->need_refresh = selected && !in->initial_state;
         if (stream->ds->need_refresh)
@@ -1504,6 +1505,23 @@ void demuxer_select_track(struct demuxer *demuxer, struct sh_stream *stream,
         }
     }
     pthread_mutex_unlock(&in->lock);
+}
+
+void demuxer_select_track(struct demuxer *demuxer, struct sh_stream *stream,
+                          double ref_pts, bool selected)
+{
+    _select_track_n(demuxer, stream, ref_pts, selected, false);
+}
+
+// disables/de-selects the given stream, but without flushing packets.
+// used by gapless pid turn-over in loadfile.c::recover_lost_streams().
+void demux_deactivate_stream(struct demuxer *demuxer, struct sh_stream *stream)
+{
+    pthread_mutex_lock(&demuxer->in->lock);
+    stream->ds->active = false;
+    stream->ds->refreshing = false;
+    pthread_mutex_unlock(&demuxer->in->lock);
+    _select_track_n(demuxer, stream, MP_NOPTS_VALUE, false, true);
 }
 
 void demux_set_stream_autoselect(struct demuxer *demuxer, bool autoselect)

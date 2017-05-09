@@ -161,6 +161,77 @@ void print_track_list(struct MPContext *mpctx, const char *msg)
     }
 }
 
+static struct track *
+track_by_dmxid(struct MPContext *mpctx, enum stream_type type, int dmxid)
+{
+    if (dmxid < 0)
+        return NULL;
+
+    for (int n = 0; n < mpctx->num_tracks; n++) {
+        struct track *track = mpctx->tracks[n];
+        if (track->type == type && track->demuxer_id == dmxid)
+            return track;
+    }
+    return NULL;
+}
+
+// try to recover from lost streams in mid stream (due to PMT change in TS).
+// prepare for the future gapless switch of tracks.
+static void recover_lost_streams(struct MPContext *mpctx)
+{
+    demux_program_t prog;
+
+    prog.progid = PROGID_KEEP_CURRENT;
+    prog.vlangs = mpctx->opts->stream_lang[STREAM_VIDEO];
+    prog.alangs = mpctx->opts->stream_lang[STREAM_AUDIO];
+    prog.slangs = mpctx->opts->stream_lang[STREAM_SUB];
+    if (demux_control(mpctx->demuxer, DEMUXER_CTRL_IDENTIFY_PROGRAM, &prog)
+        != CONTROL_OK)
+        return;    // there's nothing we can do.
+
+    MP_VERBOSE(mpctx, "setup switching to prog:%d v:%#06x a:%#06x s:%#06x\n",
+               prog.progid, prog.vid, prog.aid, prog.sid);
+    mpctx->next_track[STREAM_VIDEO] = track_by_dmxid(mpctx, STREAM_VIDEO, prog.vid);
+    mpctx->next_track[STREAM_AUDIO] = track_by_dmxid(mpctx, STREAM_AUDIO, prog.aid);
+    mpctx->next_track[STREAM_SUB] = track_by_dmxid(mpctx, STREAM_SUB, prog.sid);
+    // activate the new demuxer stream here to preload packets,
+    //  and stop feeding to the previous stream (but keep its packet buffer).
+    // complete track-switch should be done later at handle_track_pivot().
+    for (int type = 0; type < STREAM_TYPE_COUNT; type++) {
+        struct track *t = mpctx->next_track[type];
+        struct demux_packet *dummy;
+
+        if (!t)
+            continue;
+        t->selected = true;
+        // Selects new demuxer stream. This trigers refreshing seek,
+        // which is desirable as some packets might have been discarded by now.
+        reselect_demux_stream(mpctx, t);
+        // make its demuxer_stream active
+        demux_read_packet_async(t->stream, &dummy);
+
+        // find the previous stream and stop it.
+        for (int order = 0; order < NUM_PTRACKS; order++) {
+            struct track *cur;
+
+            // pivot only the streams from the same demuxer,
+            // excluding the user specified pids.
+            // this must be consistend with playloop.c::handle_track_pivot().
+            if (mpctx->opts->stream_id[order][type] != -1)
+                continue;
+
+            cur = mpctx->current_track[order][type];
+            if (!cur || cur->demuxer != t->demuxer)
+                continue;
+
+            MP_VERBOSE(cur->demuxer, "de-selecting [%04x]\n", cur->demuxer_id);
+            cur->selected = false;
+            demux_deactivate_stream(cur->demuxer, cur->stream);
+            break;
+        }
+    }
+}
+
 void update_demuxer_properties(struct MPContext *mpctx)
 {
     struct demuxer *demuxer = mpctx->demuxer;
@@ -187,6 +258,11 @@ void update_demuxer_properties(struct MPContext *mpctx)
         add_demuxer_tracks(mpctx, tracks);
         print_track_list(mpctx, NULL);
         tracks->events &= ~DEMUX_EVENT_STREAMS;
+    }
+    if (mpctx->in_playloop && (events & DEMUX_EVENT_NOSTREAM) &&
+        !(mpctx->next_track[0] || mpctx->next_track[1] || mpctx->next_track[2])) {
+        MP_INFO(mpctx, "current track was lost.\n");
+        recover_lost_streams(mpctx);
     }
     if (events & DEMUX_EVENT_METADATA) {
         struct mp_tags *info =
