@@ -1005,6 +1005,11 @@ void write_video(struct MPContext *mpctx)
     if (mpctx->paused && mpctx->video_status >= STATUS_READY)
         return;
 
+    if (!mpctx->next_track[STREAM_VIDEO] && mpctx->next_track[STREAM_AUDIO]) {
+        MP_TRACE(mpctx, "waiting for audio pid switch to catch up video's.\n");
+        return;
+    }
+
     bool logical_eof = false;
     int r = video_output_image(mpctx, &logical_eof);
     MP_TRACE(mpctx, "video_output_image: %d\n", r);
