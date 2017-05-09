@@ -658,9 +658,12 @@ static void ao_process(struct mp_filter *f)
         struct mp_frame frame = mp_pin_out_read(f->ppins[0]);
         if (frame.type == MP_FRAME_EOF) {
             MP_VERBOSE(mpctx, "got EOF with no data before it\n");
+            // do not signal eof, not to abort on a pid-swtiching.
+/*
             ao_c->out_eof = true;
             mpctx->audio_status = STATUS_DRAINING;
             mp_wakeup_core(mpctx);
+ */
         } else if (frame.type) {
             mp_pin_out_unread(f->ppins[0], frame);
         }
@@ -887,6 +890,11 @@ void fill_audio_out_buffers(struct MPContext *mpctx)
     if (ao_c->filter->ao_needs_update) {
         if (reinit_audio_filters_and_output(mpctx) < 0)
             return;
+    }
+
+    if (!mpctx->next_track[STREAM_AUDIO] && mpctx->next_track[STREAM_VIDEO]) {
+        MP_TRACE(mpctx, "waiting for video pid switch to catch up audio's.\n");
+        return;
     }
 
     if (mpctx->vo_chain && ao_c->track && ao_c->track->dec &&
