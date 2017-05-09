@@ -2377,6 +2377,9 @@ static int mp_property_program(void *ctx, struct m_property *prop,
             prog.progid = *((int *) arg);
         else
             prog.progid = -1;
+        prog.vlangs = mpctx->opts->stream_lang[STREAM_VIDEO];
+        prog.alangs = mpctx->opts->stream_lang[STREAM_AUDIO];
+        prog.slangs = mpctx->opts->stream_lang[STREAM_SUB];
         if (demux_control(demuxer, DEMUXER_CTRL_IDENTIFY_PROGRAM, &prog) ==
             DEMUXER_CTRL_NOTIMPL)
             return M_PROPERTY_ERROR;
