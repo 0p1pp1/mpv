@@ -134,6 +134,7 @@ struct format_hack {
     bool clear_filepos : 1;
     bool ignore_start : 1;
     bool fix_editlists : 1;
+    bool check_pids : 1;        // pids may dismiss in the midst of stream
 };
 
 #define BLACKLIST(fmt) {fmt, .ignore = true}
@@ -151,7 +152,7 @@ static const struct format_hack format_hacks[] = {
 
     {"hls", .no_stream = true, .clear_filepos = true, .skipinfo = true},
     {"mpeg", .use_stream_ids = true},
-    {"mpegts", .use_stream_ids = true},
+    {"mpegts", .use_stream_ids = true, .check_pids = true},
 
     {"mp4", .skipinfo = true, .fix_editlists = true},
     {"matroska", .skipinfo = true},
@@ -551,6 +552,7 @@ static void select_tracks(struct demuxer *demuxer, int start)
         AVStream *st = priv->avfc->streams[n];
         bool selected = stream && demux_stream_is_selected(stream) &&
                         !stream->attached_picture;
+        selected |= priv->format_hack.check_pids;
         st->discard = selected ? AVDISCARD_DEFAULT : AVDISCARD_ALL;
     }
 }
@@ -735,6 +737,28 @@ static void handle_new_stream(demuxer_t *demuxer, int i)
     }
 
     select_tracks(demuxer, i);
+}
+
+static void check_pid_change(demuxer_t *demuxer)
+{
+    lavf_priv_t *priv = demuxer->priv;
+
+    if (!priv->format_hack.check_pids || priv->avfc->nb_programs < 1)
+        return;
+
+    // TODO: check/detect PMT change and report only once per change
+    for (int i=0; i < priv->num_streams; i++) {
+        struct sh_stream *sh;
+
+        sh = priv->streams[i];
+        if (!demux_stream_is_selected(sh))
+            continue;
+        if (av_find_program_from_stream(priv->avfc, NULL, sh->ff_index))
+            continue;
+        demux_changed(demuxer, DEMUX_EVENT_NOSTREAM);
+        break;
+    }
+    return;
 }
 
 // Add any new streams that might have been added
@@ -956,6 +980,7 @@ static int demux_lavf_fill_buffer(demuxer_t *demux)
     }
 
     add_new_streams(demux);
+    check_pid_change(demux);
     update_metadata(demux, pkt);
 
     assert(pkt->stream_index >= 0 && pkt->stream_index < priv->num_streams);

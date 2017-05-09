@@ -83,6 +83,8 @@ enum demux_event {
     DEMUX_EVENT_INIT = 1 << 0,      // complete (re-)initialization
     DEMUX_EVENT_STREAMS = 1 << 1,   // a stream was added
     DEMUX_EVENT_METADATA = 1 << 2,  // metadata or stream_metadata changed
+    // one of the selected streams was deactivated, due to a PMT change for ex.
+    DEMUX_EVENT_NOSTREAM = 1 << 12,
     DEMUX_EVENT_ALL = 0xFFFF,
 };
 
@@ -279,6 +281,7 @@ int demux_control(struct demuxer *demuxer, int cmd, void *arg);
 
 void demuxer_select_track(struct demuxer *demuxer, struct sh_stream *stream,
                           double ref_pts, bool selected);
+void demux_deactivate_stream(struct demuxer *demuxer, struct sh_stream *stream);
 void demux_set_stream_autoselect(struct demuxer *demuxer, bool autoselect);
 
 void demuxer_help(struct mp_log *log);

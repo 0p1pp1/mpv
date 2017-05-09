@@ -1075,6 +1075,87 @@ static void handle_complex_filter_decoders(struct MPContext *mpctx)
     }
 }
 
+// swap current track if it has no packets and the next_track is available
+static void handle_track_pivot(struct MPContext *mpctx)
+{
+    for (int type = 0; type < STREAM_TYPE_COUNT; type++) {
+        struct track *nxt;
+
+        nxt = mpctx->next_track[type];
+        if (!nxt)
+            continue;
+
+        for (int order = 0; order < NUM_PTRACKS; order++) {
+            struct track *cur;
+
+            // pivot only the streams from the same demuxer,
+            // excluding the user specified pids.
+            // this must be consistent with loadfile.c::restore_lost_streams().
+            if (mpctx->opts->stream_id[order][type] != -1)
+                continue;
+
+            cur = mpctx->current_track[order][type];
+            if (!cur || cur->demuxer != nxt->demuxer)
+                continue;
+
+            // waiting for the old stream to be drained
+            if (mpctx->next_track[type] && demux_has_packet(cur->stream))
+                continue;
+
+            cur->selected = false;
+            reselect_demux_stream(mpctx, cur);
+            if (!mpctx->next_track[type])
+                continue;
+
+            // steal {ao_chain, dec_audio} to the new track
+            nxt->remux_sink = cur->remux_sink;
+            switch (type) {
+            case STREAM_VIDEO:
+                nxt->vo_c = cur->vo_c;
+                nxt->vo_c->track = nxt;
+                cur->vo_c = NULL;
+                nxt->ao_c = NULL;
+                nxt->d_video = cur->d_video;
+                nxt->d_video->header = nxt->stream;
+                cur->d_video = NULL;
+                break;
+            case STREAM_AUDIO:
+                nxt->ao_c = cur->ao_c;
+                nxt->ao_c->track = nxt;
+                cur->ao_c = NULL;
+                nxt->vo_c = NULL;
+                nxt->d_audio = cur->d_audio;
+                nxt->d_audio->header = nxt->stream;
+                cur->d_audio = NULL;
+                break;
+            case STREAM_SUB:
+                uninit_sub(mpctx, cur);
+                reinit_sub(mpctx, nxt);
+                break;
+            }
+            mpctx->current_track[order][type] = nxt;
+            mpctx->next_track[type] = NULL;
+            MP_VERBOSE(mpctx, "pivotted current[%d][%d] track:%d -> %d\n",
+                       order, type, cur->user_tid, nxt->user_tid);
+
+            // continue to de-select current_track[order+1...][type]
+        }
+
+        if (!mpctx->next_track[type]) {
+            if (!mpctx->next_track[STREAM_VIDEO] &&
+                !mpctx->next_track[STREAM_AUDIO] &&
+                !mpctx->next_track[STREAM_SUB])
+            {
+                reset_playback_state(mpctx);
+                MP_VERBOSE(mpctx, "finished switching to new program.\n");
+            }
+
+            mp_notify(mpctx, MPV_EVENT_TRACK_SWITCHED, NULL);
+            mp_wakeup_core(mpctx);
+        }
+    }
+}
+
 void run_playloop(struct MPContext *mpctx)
 {
 #if HAVE_ENCODING
@@ -1085,6 +1166,8 @@ void run_playloop(struct MPContext *mpctx)
 #endif
 
     update_demuxer_properties(mpctx);
+
+    handle_track_pivot(mpctx);
 
     handle_complex_filter_decoders(mpctx);
 
