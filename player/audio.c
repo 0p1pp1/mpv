@@ -833,6 +833,11 @@ void fill_audio_out_buffers(struct MPContext *mpctx)
         return;
     }
 
+    if (!mpctx->next_track[STREAM_AUDIO] && mpctx->next_track[STREAM_VIDEO]) {
+        MP_TRACE(mpctx, "waiting for video pid switch to catch up audio's.\n");
+        return;
+    }
+
     if (mpctx->vo_chain && ao_c->track && ao_c->track->dec &&
         ao_c->track->dec->pts_reset)
     {
@@ -878,6 +883,7 @@ void fill_audio_out_buffers(struct MPContext *mpctx)
         (opts->sync_max_audio_change + opts->sync_max_video_change) / 100;
     if (mpctx->display_sync_active && opts->video_sync == VS_DISP_ADROP &&
         fabs(mpctx->last_av_difference) >= opts->sync_audio_drop_size &&
+        !mpctx->next_track[STREAM_VIDEO] && !mpctx->next_track[STREAM_AUDIO] &&
         mpctx->audio_drop_throttle < drop_limit &&
         mpctx->audio_status == STATUS_PLAYING)
     {

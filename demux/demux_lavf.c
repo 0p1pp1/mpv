@@ -143,6 +143,7 @@ struct format_hack {
     bool is_network : 1;
     bool no_seek : 1;
     bool no_pcm_seek : 1;
+    bool check_pids : 1;        // pids may dismiss in the midst of stream
 };
 
 #define BLACKLIST(fmt) {fmt, .ignore = true}
@@ -162,7 +163,7 @@ static const struct format_hack format_hacks[] = {
     {"dash", .no_stream = true, .clear_filepos = true},
     {"sdp", .clear_filepos = true, .is_network = true, .no_seek = true},
     {"mpeg", .use_stream_ids = true},
-    {"mpegts", .use_stream_ids = true},
+    {"mpegts", .use_stream_ids = true, .check_pids = true},
 
     {"mp4", .skipinfo = true, .fix_editlists = true, .no_pcm_seek = true},
     {"matroska", .skipinfo = true, .no_pcm_seek = true},
@@ -221,6 +222,7 @@ typedef struct lavf_priv {
     int num_streams;
     int cur_program;
     bool new_prog_set;
+    bool in_track_pivot;
     char *mime_type;
     double seek_delay;
 
@@ -573,6 +575,7 @@ static void select_tracks(struct demuxer *demuxer, int start)
         AVStream *st = priv->avfc->streams[n];
         bool selected = stream && demux_stream_is_selected(stream) &&
                         !stream->attached_picture;
+        selected |= priv->format_hack.check_pids;
         st->discard = selected ? AVDISCARD_DEFAULT : AVDISCARD_ALL;
     }
 }
@@ -813,6 +816,45 @@ static void handle_new_stream(demuxer_t *demuxer, int i)
     }
 
     select_tracks(demuxer, i);
+}
+
+static void check_pid_change(demuxer_t *demuxer)
+{
+    lavf_priv_t *priv = demuxer->priv;
+    int i;
+
+    if (!priv->format_hack.check_pids || priv->avfc->nb_programs < 1)
+        return;
+
+    // bypass pid check
+    if (demux_get_event(demuxer) & DEMUX_EVENT_NOSTREAM)
+        return;
+
+    // TODO: check/detect PMT change to issue _NOSTREAM event
+    for (i=0; i < priv->num_streams; i++) {
+        struct stream_info *si;
+        struct sh_stream *sh;
+
+        si = priv->streams[i];
+        if (!si)
+            continue;
+        sh = si->sh;
+        if (!demux_stream_is_selected(sh))
+            continue;
+        if (!(sh->type == STREAM_VIDEO || sh->type == STREAM_AUDIO))
+            continue;
+        if (av_find_program_from_stream(priv->avfc, NULL, sh->ff_index))
+            continue;
+        if (!priv->in_track_pivot) {
+            demux_set_event(demuxer, DEMUX_EVENT_NOSTREAM);
+            MP_INFO(demuxer, "LOST PID! %04x\n", sh->demuxer_id);
+        }
+        priv->in_track_pivot = true;
+        break;
+    }
+    if (i == priv->num_streams)
+        priv->in_track_pivot = false;
+    return;
 }
 
 // Add any new streams that might have been added
@@ -1118,6 +1160,7 @@ static bool demux_lavf_read_packet(struct demuxer *demux,
     }
 
     add_new_streams(demux);
+    check_pid_change(demux);
     update_metadata(demux);
 
     assert(pkt->stream_index >= 0 && pkt->stream_index < priv->num_streams);

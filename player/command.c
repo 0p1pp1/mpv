@@ -1980,7 +1980,7 @@ static int property_switch_track(struct m_property *prop, int action, void *arg,
             struct m_property_switch_arg *sarg = arg;
             do {
                 track = track_next(mpctx, type, sarg->inc >= 0 ? +1 : -1, track);
-                mp_switch_track_n(mpctx, order, type, track, FLAG_MARK_SELECTION);
+                mp_switch_track_n(mpctx, order, type, track, 0);
             } while (mpctx->current_track[order][type] != track);
             print_track_list(mpctx, "Track switched:");
         } else {

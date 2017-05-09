@@ -2073,8 +2073,9 @@ static void add_packet_locked(struct sh_stream *stream, demux_packet_t *dp)
 
     const char *num_pkts = queue->head == queue->tail ? "1" : ">1";
     uint64_t fw_bytes = get_foward_buffered_bytes(ds);
-    MP_TRACE(in, "append packet to %s: size=%zu pts=%f dts=%f pos=%"PRIi64" "
+    MP_TRACE(in, "append packet to %s[%04x]: size=%zu pts=%f dts=%f pos=%"PRIi64" "
              "[num=%s size=%zd]\n", stream_type_name(stream->type),
+             stream->demuxer_id,
              dp->len, dp->pts, dp->dts, dp->pos, num_pkts, (size_t)fw_bytes);
 
     adjust_seek_range_on_packet(ds, dp);
@@ -3904,6 +3905,31 @@ void demux_set_stream_wakeup_cb(struct sh_stream *sh,
     pthread_mutex_unlock(&sh->ds->in->lock);
 }
 
+// enable/disable the given stream, but without seeking/flushing.
+// used by gapless pid turn-over in loadfile.c::recover_lost_streams().
+void demux_activate_stream(struct demuxer *demuxer, struct sh_stream *stream,
+                           bool selected)
+{
+    struct demux_internal *in = demuxer->in;
+    struct demux_stream *ds = stream->ds;
+
+    pthread_mutex_lock(&in->lock);
+    if (ds->selected != selected) {
+        ds->eager = selected && (stream->type != STREAM_SUB);
+        ds->refreshing = false;
+        ds->selected = selected;
+        in->tracks_switched = true;
+        if (in->threading) {
+            pthread_cond_signal(&in->wakeup);
+        } else {
+            execute_trackswitch(in);
+        }
+    }
+    pthread_mutex_unlock(&in->lock);
+    MP_DBG(demuxer, "%sactivated stream [%04x]\n",
+           selected ? "" : "de-", stream->demuxer_id);
+}
+
 int demuxer_add_attachment(demuxer_t *demuxer, char *name, char *type,
                            void *data, size_t data_size)
 {
@@ -4403,4 +4429,24 @@ struct demux_chapter *demux_copy_chapter_data(struct demux_chapter *c, int num)
         new[n].metadata = mp_tags_dup(new, new[n].metadata);
     }
     return new;
+}
+
+void demux_set_event(demuxer_t *demuxer, enum demux_event event)
+{
+    struct demux_internal *in = demuxer->in;
+
+    pthread_mutex_lock(&in->lock);
+    in->events |= event;
+    pthread_mutex_unlock(&in->lock);
+}
+
+int demux_get_event(demuxer_t *demuxer)
+{
+    struct demux_internal *in = demuxer->in;
+    int ret;
+
+    pthread_mutex_lock(&in->lock);
+    ret = in->events;
+    pthread_mutex_unlock(&in->lock);
+    return ret;
 }
