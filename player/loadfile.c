@@ -76,6 +76,9 @@ static void uninit_demuxer(struct MPContext *mpctx)
         for (int t = 0; t < STREAM_TYPE_COUNT; t++)
             mpctx->current_track[r][t] = NULL;
     }
+    for (int t = 0; t < STREAM_TYPE_COUNT; t++)
+        mpctx->next_track[t] = NULL;
+
     talloc_free(mpctx->chapters);
     mpctx->chapters = NULL;
     mpctx->num_chapters = 0;
@@ -162,6 +165,75 @@ void print_track_list(struct MPContext *mpctx, const char *msg)
     }
 }
 
+static struct track *
+track_by_dmxid(struct MPContext *mpctx, enum stream_type type, int dmxid)
+{
+    if (dmxid < 0)
+        return NULL;
+
+    for (int n = 0; n < mpctx->num_tracks; n++) {
+        struct track *track = mpctx->tracks[n];
+        if (track->type == type && track->demuxer_id == dmxid)
+            return track;
+    }
+    return NULL;
+}
+
+// try to recover from lost streams in mid stream (due to PMT change in TS).
+// prepare for the future gapless switch of tracks.
+static void recover_lost_streams(struct MPContext *mpctx)
+{
+    demux_program_t prog;
+
+    prog.progid = PROGID_KEEP_CURRENT;
+    prog.vlangs = mpctx->opts->stream_lang[STREAM_VIDEO];
+    prog.alangs = mpctx->opts->stream_lang[STREAM_AUDIO];
+    prog.slangs = mpctx->opts->stream_lang[STREAM_SUB];
+    if (demux_control(mpctx->demuxer, DEMUXER_CTRL_IDENTIFY_PROGRAM, &prog)
+        != CONTROL_OK)
+        return;    // there's nothing we can do.
+
+    MP_VERBOSE(mpctx, "setup switching to prog:%d v:%#06x a:%#06x s:%#06x\n",
+               prog.progid, prog.vid, prog.aid, prog.sid);
+
+    if (mpctx->opts->stream_id[0][STREAM_VIDEO] == -1)
+        mpctx->next_track[STREAM_VIDEO] = track_by_dmxid(mpctx, STREAM_VIDEO, prog.vid);
+    if (mpctx->opts->stream_id[0][STREAM_AUDIO] == -1)
+        mpctx->next_track[STREAM_AUDIO] = track_by_dmxid(mpctx, STREAM_AUDIO, prog.aid);
+    if (mpctx->opts->stream_id[0][STREAM_SUB] == -1)
+        mpctx->next_track[STREAM_SUB] = track_by_dmxid(mpctx, STREAM_SUB, prog.sid);
+
+    // Selects the new track.
+    // should not using reselect_demux_stream()/demuxser_select_track() here,
+    // since it involves refreshing seek, which seems to be useless/troublesome.
+    for (int type = 0; type < STREAM_TYPE_COUNT; type++) {
+        struct track *nxt;
+
+        nxt = mpctx->next_track[type];
+        if (!nxt)
+            continue;
+
+        nxt->selected = true;
+        demux_activate_stream(nxt->demuxer, nxt->stream, true);
+
+        for (int order = 0; order < NUM_PTRACKS; order++) {
+            struct track *cur;
+
+            // pivot only the streams from the same demuxer,
+            cur = mpctx->current_track[order][type];
+            if (!cur || cur->demuxer != nxt->demuxer)
+                continue;
+
+            cur->selected = false;
+            demux_activate_stream(cur->demuxer, cur->stream, false);
+            MP_VERBOSE(cur->demuxer, "de-selected [%04x]\n", cur->demuxer_id);
+            if (cur == mpctx->seek_slave)
+                mpctx->seek_slave = NULL;
+        }
+    }
+    // real track-switching should be done later at handle_track_pivot().
+}
+
 void update_demuxer_properties(struct MPContext *mpctx)
 {
     struct demuxer *demuxer = mpctx->demuxer;
@@ -188,6 +260,11 @@ void update_demuxer_properties(struct MPContext *mpctx)
         add_demuxer_tracks(mpctx, tracks);
         print_track_list(mpctx, NULL);
         tracks->events &= ~DEMUX_EVENT_STREAMS;
+    }
+    if (mpctx->in_playloop && (events & DEMUX_EVENT_NOSTREAM) &&
+        !(mpctx->next_track[0] || mpctx->next_track[1] || mpctx->next_track[2])) {
+        recover_lost_streams(mpctx);
+        demuxer->events &= ~DEMUX_EVENT_NOSTREAM;
     }
     if (events & DEMUX_EVENT_METADATA) {
         struct mp_tags *info =
@@ -492,6 +569,7 @@ void mp_switch_track_n(struct MPContext *mpctx, int order, enum stream_type type
     }
 
     mpctx->current_track[order][type] = track;
+    mpctx->next_track[type] = NULL;
 
     if (track) {
         track->selected = true;
@@ -1275,6 +1353,7 @@ static void play_current_file(struct MPContext *mpctx)
                 sel = select_default_track(mpctx, i, t);
             mpctx->current_track[i][t] = sel;
         }
+        mpctx->next_track[t] = NULL;
     }
     for (int t = 0; t < STREAM_TYPE_COUNT; t++) {
         for (int i = 0; i < NUM_PTRACKS; i++) {

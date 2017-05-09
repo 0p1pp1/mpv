@@ -1375,8 +1375,9 @@ void demux_add_packet(struct sh_stream *stream, demux_packet_t *dp)
     if (ds->base_ts == MP_NOPTS_VALUE)
         ds->base_ts = queue->last_ts;
 
-    MP_TRACE(in, "append packet to %s: size=%d pts=%f dts=%f pos=%"PRIi64" "
+    MP_TRACE(in, "append packet to %s[%04x]: size=%d pts=%f dts=%f pos=%"PRIi64" "
              "[num=%zd size=%zd]\n", stream_type_name(stream->type),
+             stream->demuxer_id,
              dp->len, dp->pts, dp->dts, dp->pos, ds->fw_packs, ds->fw_bytes);
 
     adjust_seek_range_on_packet(ds, dp);
@@ -2788,6 +2789,29 @@ void demuxer_select_track(struct demuxer *demuxer, struct sh_stream *stream,
     pthread_mutex_unlock(&in->lock);
 }
 
+// enable/disable the given stream, but without seeking/flushing.
+// used by gapless pid turn-over in loadfile.c::recover_lost_streams().
+void demux_activate_stream(struct demuxer *demuxer, struct sh_stream *stream,
+                           bool selected)
+{
+    struct demux_internal *in = demuxer->in;
+    struct demux_stream *ds = stream->ds;
+
+    pthread_mutex_lock(&in->lock);
+    if (ds->selected != selected) {
+        ds->eager = selected && (stream->type != STREAM_SUB);
+        ds->refreshing = false;
+        ds->selected = selected;
+        in->tracks_switched = true;
+        if (in->threading) {
+            pthread_cond_signal(&in->wakeup);
+        } else {
+            execute_trackswitch(in);
+        }
+    }
+    pthread_mutex_unlock(&in->lock);
+}
+
 void demux_set_stream_autoselect(struct demuxer *demuxer, bool autoselect)
 {
     assert(!demuxer->in->threading); // laziness
@@ -3124,4 +3148,13 @@ struct demux_chapter *demux_copy_chapter_data(struct demux_chapter *c, int num)
         new[n].metadata = mp_tags_dup(new, new[n].metadata);
     }
     return new;
+}
+
+void demux_set_event(demuxer_t *demuxer, enum demux_event event)
+{
+    struct demux_internal *in = demuxer->in;
+
+    pthread_mutex_lock(&in->lock);
+    in->events |= event;
+    pthread_mutex_unlock(&in->lock);
 }

@@ -300,6 +300,14 @@ typedef struct MPContext {
     // Currently, this is used for the secondary subtitle track only.
     struct track *current_track[NUM_PTRACKS][STREAM_TYPE_COUNT];
 
+    // For gapless program turn over in MPEG-TS.
+    // If next_track[type] is set to non-NULL,
+    // it indicates that next_track is goint to replace current_track,
+    // waiting for the current_track to be drained and
+    // pre-buffering next_track in parallel.
+    // Once finished switching, it is cleared to NULL again.
+    struct track *next_track[STREAM_TYPE_COUNT];
+
     struct mp_filter *filter_root;
 
     struct mp_filter *lavfi;
