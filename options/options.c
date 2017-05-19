@@ -373,6 +373,11 @@ const m_option_t mp_opts[] = {
     OPT_ALIAS("audio", "aid"),
     OPT_STRINGLIST("alang", stream_lang[STREAM_AUDIO], 0),
     OPT_STRINGLIST("slang", stream_lang[STREAM_SUB], 0),
+    OPT_CHOICE("dmono", audio_dmono_ch, 0,
+               ({"auto", -1},
+                {"main", 0},
+                {"sub", 1},
+                {"both", 2})),
 
     OPT_STRING("lavfi-complex", lavfi_complex, 0),
 
@@ -956,6 +961,7 @@ const struct MPOpts mp_default_opts = {
         .set = 1,
         .auto_safe = 1,
     },
+    .audio_dmono_ch = -1,
 
     .index_mode = 1,
 

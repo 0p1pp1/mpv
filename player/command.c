@@ -2066,6 +2066,72 @@ static int mp_property_audio_out_params(void *ctx, struct m_property *prop,
     return property_audiofmt(fmt, action, arg);
 }
 
+static int mp_property_dmono(void *ctx, struct m_property *prop,
+                             int action, void *arg)
+{
+    MPContext *mpctx = ctx;
+    struct track *track;
+    int val;
+    char **str;
+    struct m_property_switch_arg *sarg;
+
+    track = mpctx->current_track[0][STREAM_AUDIO];
+    if (!track || !track->stream || !track->stream->is_dmono)
+        return M_PROPERTY_UNAVAILABLE;
+
+    val = track->stream->dmono_mode;
+    switch (action) {
+    case M_PROPERTY_PRINT:
+        str = arg;
+        if (val == DMONO_MAIN)
+            *str = talloc_strdup(NULL, "main(left)");
+        else if (val == DMONO_SUB)
+            *str = talloc_strdup(NULL, "sub(right)");
+        else
+            *str = talloc_strdup(NULL, "both");
+        return M_PROPERTY_OK;
+
+    case M_PROPERTY_GET:
+        *(int *)arg = val;
+        return M_PROPERTY_OK;
+
+    case M_PROPERTY_SET:
+        val = *(int *)arg;
+        if (val < 0 || val > 2)
+            return M_PROPERTY_ERROR;
+        track->stream->dmono_mode = val;
+        return M_PROPERTY_OK;
+
+    case M_PROPERTY_SWITCH:
+        sarg = arg;
+        if (sarg->wrap) {
+            if (sarg->inc >= 0)
+                val = (val == DMONO_MAIN) ? DMONO_SUB : DMONO_MAIN;
+            else
+                val = (val == DMONO_SUB) ? DMONO_MAIN : DMONO_SUB;
+        } else {
+            if (sarg->inc >= 0 && val == DMONO_MAIN)
+                val = DMONO_SUB;
+            else if (sarg->inc < 0 && val == DMONO_SUB)
+                val = DMONO_MAIN;
+            else
+                return M_PROPERTY_UNAVAILABLE;
+        }
+        track->stream->dmono_mode = val;
+        return M_PROPERTY_OK;
+
+    case M_PROPERTY_GET_TYPE:
+        *(struct m_option *)arg = (struct m_option){
+            .type = CONF_TYPE_INT,
+            .flags = CONF_RANGE,
+            .min = 0,
+            .max = 2,
+        };
+        return M_PROPERTY_OK;
+    }
+    return M_PROPERTY_NOT_IMPLEMENTED;
+}
+
 /// Balance (RW)
 static int mp_property_balance(void *ctx, struct m_property *prop,
                                int action, void *arg)
@@ -2155,7 +2221,23 @@ static int property_switch_track(struct m_property *prop, int action, void *arg,
             return M_PROPERTY_ERROR;
         struct m_property_switch_arg *sarg = arg;
         do {
+            if (mp_track_is_dmono(track)) {
+                struct sh_stream *sh = track->stream;
+
+                if (sh->dmono_mode == DMONO_MAIN && sarg->inc >= 0) {
+                    sh->dmono_mode = DMONO_SUB;
+                    break;
+                } else if (sh->dmono_mode != DMONO_MAIN && sarg->inc < 0) {
+                    sh->dmono_mode = DMONO_MAIN;
+                    break;
+                }
+                // reset and move to the next track.
+                sh->dmono_mode = DMONO_MAIN;
+            }
             track = track_next(mpctx, type, sarg->inc >= 0 ? +1 : -1, track);
+            if (mp_track_is_dmono(track))
+                track->stream->dmono_mode = sarg->inc >= 0 ?
+                                                    DMONO_MAIN : DMONO_SUB;
             mp_switch_track_n(mpctx, order, type, track, 0);
         } while (mpctx->current_track[order][type] != track);
         print_track_list(mpctx, "Track switched:");
@@ -2165,6 +2247,7 @@ static int property_switch_track(struct m_property *prop, int action, void *arg,
         if (mpctx->playback_initialized) {
             track = mp_track_by_tid(mpctx, type, *(int *)arg);
             mp_switch_track_n(mpctx, order, type, track, FLAG_MARK_SELECTION);
+            mp_select_dmono_sub_ch(mpctx, track);
             print_track_list(mpctx, "Track switched:");
             mp_wakeup_core(mpctx);
         } else {
@@ -2390,8 +2473,12 @@ static int mp_property_program(void *ctx, struct m_property *prop,
         }
         mp_switch_track(mpctx, STREAM_VIDEO,
                 find_track_by_demuxer_id(mpctx, STREAM_VIDEO, prog.vid), 0);
-        mp_switch_track(mpctx, STREAM_AUDIO,
-                find_track_by_demuxer_id(mpctx, STREAM_AUDIO, prog.aid), 0);
+
+        struct track *t;
+        t = find_track_by_demuxer_id(mpctx, STREAM_AUDIO, prog.aid);
+        mp_switch_track(mpctx, STREAM_AUDIO, t, 0);
+        mp_select_dmono_sub_ch(mpctx, t);
+
         mp_switch_track(mpctx, STREAM_SUB,
                 find_track_by_demuxer_id(mpctx, STREAM_VIDEO, prog.sid), 0);
         print_track_list(mpctx, "Program switched:");
@@ -3952,6 +4039,7 @@ static const struct m_property mp_properties_base[] = {
     {"audio-device-list", mp_property_audio_devices},
     {"current-ao", mp_property_ao},
     {"audio-out-detected-device", mp_property_ao_detected_device},
+    {"dmono-mode", mp_property_dmono},
 
     // Video
     {"fullscreen", mp_property_fullscreen},
