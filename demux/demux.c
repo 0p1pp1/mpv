@@ -981,6 +981,7 @@ struct sh_stream *demux_alloc_sh_stream(enum stream_type type)
         .program_id = -1,   // ... same
         .codec = talloc_zero(sh, struct mp_codec_params),
         .tags = talloc_zero(sh, struct mp_tags),
+        .is_dmono = false,
     };
     sh->codec->type = type;
     return sh;

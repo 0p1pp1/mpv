@@ -523,6 +523,7 @@ static const m_option_t mp_opts[] = {
     {"subs-with-matching-audio", OPT_BOOL(subs_with_matching_audio)},
     {"subs-fallback", OPT_CHOICE(subs_fallback, {"no", 0}, {"default", 1}, {"yes", 2})},
     {"subs-fallback-forced", OPT_BOOL(subs_fallback_forced)},
+    {"dmono", OPT_CHOICE(audio_dmono_ch, {"auto", -1}, {"main", 0}, {"sub", 1}, {"both", 2})},
 
     {"lavfi-complex", OPT_STRING(lavfi_complex), .flags = UPDATE_LAVFI_COMPLEX},
 
@@ -1056,6 +1057,7 @@ static const struct MPOpts mp_default_opts = {
         .set = 1,
         .auto_safe = 1,
     },
+    .audio_dmono_ch = -1,
 
     .index_mode = 1,
 
