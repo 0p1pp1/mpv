@@ -710,6 +710,10 @@ static void handle_new_stream(demuxer_t *demuxer, int i)
         AVDictionaryEntry *lang = av_dict_get(st->metadata, "language", NULL, 0);
         if (lang && lang->value)
             sh->lang = talloc_strdup(sh, lang->value);
+        AVDictionaryEntry *lang2 = av_dict_get(st->metadata, "language2", NULL, 0);
+        if (lang2 && lang2->value)
+            sh->lang_sub = talloc_strdup(sh, lang2->value);
+        sh->is_dmono = dict_get_decimal(st->metadata, "isdmono", 0);
         sh->hls_bitrate = dict_get_decimal(st->metadata, "variant_bitrate", 0);
         if (!sh->title && sh->hls_bitrate > 0)
             sh->title = talloc_asprintf(sh, "bitrate %d", sh->hls_bitrate);
@@ -751,6 +755,30 @@ static void add_new_streams(demuxer_t *demuxer)
         handle_new_stream(demuxer, priv->num_streams);
 }
 
+static void update_stream_props(struct sh_stream *sh, struct mp_tags *tags)
+{
+    // assert(sh);
+    char *lang, *lang2, *v;
+    bool dmono;
+
+    lang = tags ? mp_tags_get_str(tags, "language") : NULL;
+    if (!lang != !sh->lang || (lang && strncmp(lang, sh->lang, 3))) {
+        talloc_free(sh->lang);
+        sh->lang = lang ? talloc_strndup(sh, lang, 3) : NULL;
+    }
+
+    v = tags ? mp_tags_get_str(tags, "isdmono") : NULL;
+    dmono = v && v[0] != '0';
+    sh->is_dmono = dmono;
+    sh->dmono_mode = DMONO_MAIN;
+
+    lang2 = tags ? mp_tags_get_str(tags, "language2") : NULL;
+    if (!lang2 != !sh->lang_sub || (lang2 && strncmp(lang2, sh->lang_sub, 3))) {
+        talloc_free(sh->lang_sub);
+        sh->lang_sub = lang2 ? talloc_strndup(sh, lang2, 3) : NULL;
+    }
+}
+
 static void update_metadata(demuxer_t *demuxer, AVPacket *pkt)
 {
     lavf_priv_t *priv = demuxer->priv;
@@ -766,6 +794,7 @@ static void update_metadata(demuxer_t *demuxer, AVPacket *pkt)
             st->event_flags = 0;
             struct mp_tags *tags = talloc_zero(NULL, struct mp_tags);
             mp_tags_copy_from_av_dictionary(tags, st->metadata);
+            update_stream_props(priv->streams[n], tags);
             demux_set_stream_tags(demuxer, priv->streams[n], tags);
         }
     }
@@ -990,6 +1019,19 @@ static int demux_lavf_fill_buffer(demuxer_t *demux)
     if (!demux_stream_is_selected(stream)) {
         av_packet_unref(pkt);
         return 1; // don't signal EOF if skipping a packet
+    }
+
+    // add side data for dual mono
+    if (stream->type == STREAM_AUDIO) {
+        uint8_t *buf;
+
+        buf = av_packet_new_side_data(pkt, AV_PKT_DATA_JP_DUALMONO, 1);
+        if (!buf)
+            MP_WARN(demux, "Cannot set side-data for dual mono mode.\n");
+        else if (stream->is_dmono && stream->dmono_mode != DMONO_MAIN)
+            *buf = (stream->dmono_mode == DMONO_SUB) ? 1 : 2;
+        else
+            *buf = 0;
     }
 
     struct demux_packet *dp = new_demux_packet_from_avpacket(pkt);
