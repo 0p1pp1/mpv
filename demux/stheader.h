@@ -53,6 +53,15 @@ struct sh_stream {
     int hls_bitrate;
     int program_id;
 
+    // dual mono audio (left/right channels are independent mono streams)
+    bool is_dmono;
+    enum {
+        DMONO_MAIN = 0,
+        DMONO_SUB,
+        DMONO_BOTH,
+    } dmono_mode;               // currently selected channel
+    char *lang_sub;             // language used in right (sub) channel
+
     struct mp_tags *tags;
 
     bool missing_timestamps;

@@ -619,6 +619,7 @@ static const m_option_t mp_opts[] = {
     {"subs-fallback", OPT_CHOICE(subs_fallback, {"no", 0}, {"default", 1}, {"yes", 2})},
     {"subs-fallback-forced", OPT_CHOICE(subs_fallback_forced, {"no", 0},
         {"yes", 1}, {"always", 2})},
+    {"dmono", OPT_CHOICE(audio_dmono_ch, {"auto", -1}, {"main", 0}, {"sub", 1}, {"both", 2})},
 
     {"lavfi-complex", OPT_STRING(lavfi_complex), .flags = UPDATE_LAVFI_COMPLEX},
 
@@ -1094,6 +1095,7 @@ static const struct MPOpts mp_default_opts = {
         .set = 1,
         .auto_safe = 1,
     },
+    .audio_dmono_ch = -1,
 
     .display_tags = (char *[]){
         "Artist", "Album", "Album_Artist", "Comment", "Composer",
