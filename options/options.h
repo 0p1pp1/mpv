@@ -275,6 +275,7 @@ typedef struct MPOpts {
 
     struct m_channels audio_output_channels;
     int audio_output_format;
+    int audio_dmono_ch;
     int force_srate;
     double playback_speed;
     int pitch_correction;

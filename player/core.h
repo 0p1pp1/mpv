@@ -544,6 +544,8 @@ struct track *mp_track_by_dmxid(struct MPContext *mpctx, enum stream_type type,
                                 int demx_id);
 struct demux_program;
 void fill_demux_prog_arg(struct MPContext *mpctx, struct demux_program *prog);
+void mp_select_dmono_sub_ch(struct MPContext *mpctx, struct track *track);
+bool mp_track_is_dmono(struct track *track);
 void add_demuxer_tracks(struct MPContext *mpctx, struct demuxer *demuxer);
 bool mp_remove_track(struct MPContext *mpctx, struct track *track);
 struct playlist_entry *mp_next_file(struct MPContext *mpctx, int direction,
