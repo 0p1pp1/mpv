@@ -496,6 +496,7 @@ static const m_option_t mp_opts[] = {
     {"vlang", OPT_STRINGLIST(stream_lang[STREAM_VIDEO])},
     {"track-auto-selection", OPT_FLAG(stream_auto_sel)},
     {"subs-with-matching-audio", OPT_FLAG(subs_with_matching_audio)},
+    {"dmono", OPT_CHOICE(audio_dmono_ch, {"auto", -1}, {"main", 0}, {"sub", 1}, {"both", 2})},
 
     {"lavfi-complex", OPT_STRING(lavfi_complex), .flags = UPDATE_LAVFI_COMPLEX},
 
@@ -1019,6 +1020,7 @@ static const struct MPOpts mp_default_opts = {
         .set = 1,
         .auto_safe = 1,
     },
+    .audio_dmono_ch = -1,
 
     .index_mode = 1,
 
