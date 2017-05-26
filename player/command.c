@@ -137,6 +137,9 @@ static int set_filters(struct MPContext *mpctx, enum stream_type mediatype,
 
 static int mp_property_do_silent(const char *name, int action, void *val,
                                  struct MPContext *ctx);
+static struct track *find_track_by_demuxer_id(MPContext *mpctx,
+                                              enum stream_type type,
+                                              int demuxer_id);
 
 static void hook_remove(struct MPContext *mpctx, int index)
 {
@@ -2162,27 +2165,75 @@ static int mp_property_balance(void *ctx, struct m_property *prop,
 }
 
 static struct track* track_next(struct MPContext *mpctx, enum stream_type type,
-                                int direction, struct track *track)
+                                struct m_property_switch_arg *sarg,
+                                struct track *track)
 {
-    assert(direction == -1 || direction == +1);
     struct track *prev = NULL, *next = NULL;
+    struct track *first = NULL, *last = NULL;
     bool seen = track == NULL;
+    bool dmx_retry = false;
+
+    // firstly check within the same program in the same demuxer
+    if (track && track->demuxer && track->demuxer->stream) {
+        demux_next_track_t arg;
+        int r;
+
+        arg.src_id = track->stream->demuxer_id;
+        arg.inc = sarg->inc;
+        arg.wrap = false;
+        r = demux_control(track->demuxer, DEMUXER_CTRL_NEXT_TRACK, &arg);
+        if (r == DEMUXER_CTRL_OK) {
+            if (arg.ret_id != -2)
+                return find_track_by_demuxer_id(mpctx, track->type, arg.ret_id);
+            // retry wrapped, in-demuxer search after intra demuxer search
+            dmx_retry = sarg->wrap;
+        }
+    }
+
+    // next, search from tracks of a different demuxer.
     for (int n = 0; n < mpctx->num_tracks; n++) {
         struct track *cur = mpctx->tracks[n];
         if (cur->type == type) {
             if (cur == track) {
                 seen = true;
-            } else if (!cur->selected) {
+            } else if ( !cur->selected &&
+                        (!track || cur->demuxer != track->demuxer) ) {
+                if (!first)
+                    first = cur;
                 if (seen && !next) {
                     next = cur;
                 }
                 if (!seen || !track) {
                     prev = cur;
                 }
+                last = cur;
             }
         }
     }
-    return direction > 0 ? next : prev;
+
+    if (sarg->wrap) {
+        if (!next)
+            next = first;
+        if (!prev)
+            prev = last;
+
+        if (dmx_retry &&
+            ((!prev && sarg->inc < 0) || (!next && sarg->inc >= 0))) {
+            demux_next_track_t arg;
+            int r;
+
+            arg.src_id = track->stream->demuxer_id;
+            arg.inc = sarg->inc;
+            arg.wrap = true;
+            r = demux_control(track->demuxer, DEMUXER_CTRL_NEXT_TRACK, &arg);
+            if (r == DEMUXER_CTRL_OK)
+                return find_track_by_demuxer_id(mpctx, track->type, arg.ret_id);
+        }
+
+        if (!next || !prev)
+            next = prev = track;
+    }
+    return sarg->inc >= 0 ? next : prev;
 }
 
 static int property_switch_track(struct m_property *prop, int action, void *arg,
@@ -2204,15 +2255,39 @@ static int property_switch_track(struct m_property *prop, int action, void *arg,
             *(char **) arg = talloc_strdup(NULL, "no");
         else {
             char *lang = track->lang;
+            char buf[64];
+            char *sub_ch = "";
+
+            if (mp_track_is_dmono(track)) {
+                struct sh_stream *sh = track->stream;
+
+                switch (sh->dmono_mode) {
+                case DMONO_SUB:
+                    sub_ch = "sub";
+                    if (sh->lang_sub)
+                        lang = sh->lang_sub;
+                    break;
+                case DMONO_BOTH:
+                    sub_ch = "main,sub";
+                    snprintf(buf, sizeof(buf), "%s,%s",
+                             lang ? lang : "unknown",
+                             sh->lang_sub ? sh->lang_sub : lang ? lang : "unknown");
+                    lang = buf;
+                    break;
+                case DMONO_MAIN:
+                default:
+                    sub_ch = "main";
+                }
+            }
             if (!lang)
                 lang = "unknown";
 
             if (track->title)
-                *(char **)arg = talloc_asprintf(NULL, "(%d) %s (\"%s\")",
-                                           track->user_tid, lang, track->title);
+                *(char **)arg = talloc_asprintf(NULL, "(%d)%s %s (\"%s\")",
+                                           track->user_tid, sub_ch, lang, track->title);
             else
-                *(char **)arg = talloc_asprintf(NULL, "(%d) %s",
-                                                track->user_tid, lang);
+                *(char **)arg = talloc_asprintf(NULL, "(%d)%s %s",
+                                                track->user_tid, sub_ch, lang);
         }
         return M_PROPERTY_OK;
 
@@ -2234,7 +2309,9 @@ static int property_switch_track(struct m_property *prop, int action, void *arg,
                 // reset and move to the next track.
                 sh->dmono_mode = DMONO_MAIN;
             }
-            track = track_next(mpctx, type, sarg->inc >= 0 ? +1 : -1, track);
+            track = track_next(mpctx, type, sarg, track);
+            MP_DBG(mpctx, "trying to switch to track:%d\n",
+                   track ? track->demuxer_id :-1);
             if (mp_track_is_dmono(track))
                 track->stream->dmono_mode = sarg->inc >= 0 ?
                                                     DMONO_MAIN : DMONO_SUB;

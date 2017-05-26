@@ -44,6 +44,7 @@ enum demux_ctrl {
     DEMUXER_CTRL_GET_READER_STATE,
     DEMUXER_CTRL_GET_BITRATE_STATS, // double[STREAM_TYPE_COUNT]
     DEMUXER_CTRL_REPLACE_STREAM,
+    DEMUXER_CTRL_NEXT_TRACK,
 };
 
 struct demux_ctrl_reader_state {
@@ -239,6 +240,14 @@ typedef struct {
 } demux_program_t;
 // try to select the currently selected program if possible
 #define PROGID_KEEP_CURRENT -2
+
+// arg of DEMUXER_CTRL_NEXT_TRACK
+typedef struct {
+    int src_id;     // demuxer_id of the track from where start searching.
+    int inc;        // same as struct m_property_switch_arg
+    bool wrap;
+    int ret_id;     // [OUT] demuxer_id of the next track, or -2 if none.
+} demux_next_track_t;
 
 void free_demuxer(struct demuxer *demuxer);
 void free_demuxer_and_stream(struct demuxer *demuxer);
