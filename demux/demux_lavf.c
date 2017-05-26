@@ -1104,6 +1104,175 @@ static void demux_seek_lavf(demuxer_t *demuxer, double seek_pts, int flags)
     }
 }
 
+static struct sh_stream *find_sh_by_id(lavf_priv_t *priv, int id)
+{
+    for (int i = 0; i < priv->num_streams; i++)
+        if (priv->streams && priv->streams[i] &&
+            priv->streams[i]->demuxer_id == id)
+            return priv->streams[i];
+
+    return NULL;
+}
+
+static AVProgram *find_best_program(lavf_priv_t *priv, struct sh_stream *src_sh)
+{
+    int score;
+    int idx;
+    const int min_score = 100;
+
+    score = 0;
+    idx = -1;
+    for (int i = 0; i < priv->avfc->nb_programs; i++) {
+        AVProgram *prog;
+        int sc;
+
+        if (priv->cur_program > 0
+            && priv->avfc->programs[i]->id != priv->cur_program)
+            continue;
+
+        prog = priv->avfc->programs[i];
+        if (prog->discard == AVDISCARD_ALL)
+            continue;
+
+        sc = 0;
+        for (int j = 0; j < prog->nb_stream_indexes; j++) {
+            AVStream *s;
+            struct sh_stream *sh;
+
+            s = priv->avfc->streams[prog->stream_index[j]];
+            if (!s)
+                continue;
+
+            sh = find_sh_by_id(priv, s->id);
+            if (!sh)
+                continue;
+
+            if (sh->demuxer_id == src_sh->demuxer_id)
+                sc += min_score;
+            else if (demux_stream_is_selected(sh))
+                sc ++;
+        }
+        if (sc > score && sc >= min_score)
+            idx = i;
+    }
+
+    return (idx >= 0) ? priv->avfc->programs[idx] : NULL;
+}
+
+static void set_current_program(struct demuxer *demuxer)
+{
+    lavf_priv_t *priv = demuxer->priv;
+    AVProgram *prog;
+
+    if (priv->cur_program > 0)
+        return;
+
+    prog = NULL;
+    for (int n = 0; n < priv->num_streams; n++) {
+        struct sh_stream *stream = priv->streams[n];
+        AVProgram *p;
+
+        if (!demux_stream_is_selected(stream))
+            continue;
+
+        p = find_best_program(priv, stream);
+        if (p && !prog) // set "p" as the 1st candidate program
+            prog = p;
+        else if ((p && p->id != prog->id) || (!p && prog))
+            MP_WARN(demuxer, "selected pids are not in one program.\n");
+    }
+
+    if (prog) {
+        priv->cur_program = prog->id;
+        MP_VERBOSE(demuxer, "set the current program to %d\n", prog->id);
+    }
+}
+
+static int find_next_track(demuxer_t *demuxer, demux_next_track_t *arg)
+{
+    lavf_priv_t *priv = demuxer->priv;
+    struct sh_stream *src_sh;
+    AVProgram *prog;
+
+    arg->ret_id = -2;
+    src_sh = find_sh_by_id(priv, arg->src_id);
+    if (!src_sh)
+        return CONTROL_OK;
+
+    prog = find_best_program(priv, src_sh);
+    MP_VERBOSE(demuxer, "finding next track in prog:%d\n", prog ? prog->id : -1);
+    if (!prog) {
+        // pid:src_id is not contained in any program, or
+        // no PAT/PMT, search from the the whole pids.
+        for (int i = 0; i < priv->num_streams; i++) {
+            int j;
+
+            if (priv->streams[i] != src_sh)
+                continue;
+
+            if (arg->inc >= 0)
+                j = (i + 1) % priv->num_streams;
+            else
+                j = i == 0 ? priv->num_streams - 1 : i - 1;
+            while (j != i) {
+                if (priv->streams[j] && priv->streams[j]->type == src_sh->type)
+                    break;
+                if (arg->inc >= 0)
+                    j = (j + 1) % priv->num_streams;
+                else
+                    j = j == 0 ? priv->num_streams - 1 : j - 1;
+            }
+            if (j != i || arg->wrap)
+                arg->ret_id = priv->streams[j]->demuxer_id;
+            return CONTROL_OK;
+        }
+        return CONTROL_UNKNOWN;
+    }
+
+    // search within priv->avfc->programs[idx]
+    for (int i = 0; i < prog->nb_stream_indexes; i++) {
+        AVStream *s;
+        struct sh_stream *sh;
+        int j;
+
+        // firstly, find the pid of src_id.
+        s = priv->avfc->streams[prog->stream_index[i]];
+        if (!s)
+            continue;
+        sh = find_sh_by_id(priv, s->id);
+        if (!sh || sh->demuxer_id != src_sh->demuxer_id)
+            continue;
+
+        // then, search through again for the prev/next stream.
+        if (arg->inc >= 0)
+            j = (i + 1) % prog->nb_stream_indexes;
+        else
+            j = i == 0 ? prog->nb_stream_indexes - 1 : i - 1;
+        while (j != i) {
+            AVStream *s2;
+            struct sh_stream *sh2;
+
+            s2 = priv->avfc->streams[prog->stream_index[j]];
+            if (!s2)
+                continue;  // this should not happen.
+            sh2 = find_sh_by_id(priv, s2->id);
+            if (sh2 && sh2->type == sh->type)
+                break;
+
+            if (arg->inc >= 0)
+                j = (j + 1) % prog->nb_stream_indexes;
+            else
+                j = j == 0 ? prog->nb_stream_indexes - 1 : j - 1;
+        }
+
+        if (j != i || arg->wrap)
+            arg->ret_id = priv->avfc->streams[prog->stream_index[j]]->id;
+        return CONTROL_OK;
+    }
+    // should not be reached
+    return CONTROL_UNKNOWN;
+}
+
 // if s1 is better as a default stream
 static bool is_better_sh(struct sh_stream *s1, struct sh_stream *s2, char **langs)
 {
@@ -1132,6 +1301,7 @@ static int demux_lavf_control(demuxer_t *demuxer, int cmd, void *arg)
     case DEMUXER_CTRL_SWITCHED_TRACKS:
     {
         select_tracks(demuxer, 0);
+        set_current_program(demuxer);
         return CONTROL_OK;
     }
     case DEMUXER_CTRL_IDENTIFY_PROGRAM:
@@ -1154,7 +1324,7 @@ static int demux_lavf_control(demuxer_t *demuxer, int cmd, void *arg)
                 p++;
             if (p >= priv->avfc->nb_programs)
                 p = 0;
-            else if (prog->progid != PROGID_KEEP_CURRENT)
+            if (prog->progid != PROGID_KEEP_CURRENT)
                 p = (p + 1) % priv->avfc->nb_programs;
         } else {
             for (i = 0; i < priv->avfc->nb_programs; i++)
@@ -1234,6 +1404,8 @@ redo:
         priv->own_stream = false;
         priv->stream = demuxer->stream;
         return CONTROL_OK;
+    case DEMUXER_CTRL_NEXT_TRACK:
+        return find_next_track(demuxer, arg);
     default:
         return CONTROL_UNKNOWN;
     }
