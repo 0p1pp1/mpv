@@ -75,6 +75,9 @@ const struct m_sub_options stream_dvb_conf = {
     .opts = (const m_option_t[]) {
         OPT_STRING("prog", cfg_prog, UPDATE_DVB_PROG),
         OPT_INTRANGE("card", cfg_devno, 0, 0, MAX_ADAPTERS-1),
+        OPT_INTRANGE("frontend", cfg_fe, 0, 0, MAX_FRONTENDS-1),
+        OPT_INTRANGE("demux", cfg_dmx, 0, 0, MAX_FRONTENDS-1),
+        OPT_INTRANGE("dvr", cfg_dvr, 0, 0, MAX_FRONTENDS-1),
         OPT_INTRANGE("timeout", cfg_timeout, 0, 1, 30),
         OPT_STRING("file", cfg_file, M_OPT_FILE),
         OPT_FLAG("full-transponder", cfg_full_transponder, 0),
@@ -86,6 +89,9 @@ const struct m_sub_options stream_dvb_conf = {
     .defaults = &(const dvb_opts_t){
         .cfg_prog = NULL,
         .cfg_devno = 0,
+        .cfg_fe = 0,
+        .cfg_dmx = -1,
+        .cfg_dvr = -1,
         .cfg_timeout = 30,
     },
 };
@@ -1081,6 +1087,39 @@ err_out:
     return STREAM_ERROR;
 }
 
+static bool parse_dvb_args(dvb_priv_t *priv, bstr args)
+{
+    bstr arg, rest;
+
+    for (rest = args; rest.len > 0 && rest.start[0];) {
+        bstr name, val, r;
+        int v;
+
+        bstr_split_tok(rest, "&", &arg, &rest);
+        if (arg.len == 0 || arg.start[0] == '\0')
+            continue;
+
+        if (!bstr_split_tok(arg, "=", &name, &val))
+            return false;
+        v = bstrtoll(val, &r, 0);
+        if (r.len > 0 || v < 0 || v >= MAX_FRONTENDS)
+            return false;
+
+        if (bstr_equals0(name, "frontend")) {
+            if (priv->opts->cfg_fe <= 0)
+                priv->opts->cfg_fe = v;
+        } else if (bstr_equals0(name, "demuxer")) {
+            if (priv->opts->cfg_dmx < 0)
+                priv->opts->cfg_dmx = v;
+        } else if (bstr_equals0(name, "dvr")) {
+            if (priv->opts->cfg_dvr < 0)
+                priv->opts->cfg_dvr = v;
+        } else
+            return false;
+    }
+    return true;
+}
+
 int dvb_parse_path(stream_t *stream)
 {
     dvb_priv_t *priv = stream->priv;
@@ -1089,10 +1128,17 @@ int dvb_parse_path(stream_t *stream)
     // Parse stream path. Common rule: cfg wins over stream path,
     // since cfg may be changed at runtime.
     bstr prog, devno;
+    bstr args;
     if (!bstr_split_tok(bstr0(stream->path), "@", &devno, &prog)) {
         prog = devno;
         devno.len = 0;
     }
+    if (bstr_split_tok(prog, "?", &prog, &args))
+        if (!parse_dvb_args(priv, args)) {
+            MP_ERR(stream, "invalid argments: '%.*s'\n", BSTR_P(args));
+            return NULL;
+        }
+
 
     if (priv->opts->cfg_devno != 0) {
         priv->devno = priv->opts->cfg_devno;
@@ -1139,8 +1185,9 @@ int dvb_parse_path(stream_t *stream)
         priv->prog = talloc_strdup(priv, state->adapters[state->cur_adapter].list->channels[0].name);
     }
 
-    MP_VERBOSE(stream, "DVB_CONFIG: prog=%s, devno=%d\n",
-               priv->prog, priv->devno);
+    MP_VERBOSE(stream, "DVB_CONFIG: prog=%s, devno=%d, fe=%d dmx=%d dvr=%d\n",
+               priv->prog, priv->devno,
+               priv->opts->cfg_fe, priv->opts->cfg_dmx, priv->opts->cfg_dvr);
     return 1;
 }
 
