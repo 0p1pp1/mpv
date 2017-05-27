@@ -177,10 +177,9 @@ int dvb_open_devices(dvb_priv_t *priv, unsigned int adapter,
     unsigned int i;
     char frontend_dev[PATH_MAX], dvr_dev[PATH_MAX], demux_dev[PATH_MAX];
     dvb_state_t* state = priv->state;
+    int dmxno, dvrno;
 
     snprintf(frontend_dev, sizeof(frontend_dev), "/dev/dvb/adapter%u/frontend%u", adapter, frontend);
-    snprintf(dvr_dev, sizeof(dvr_dev), "/dev/dvb/adapter%u/dvr0", adapter);
-    snprintf(demux_dev, sizeof(demux_dev), "/dev/dvb/adapter%u/demux0", adapter);
     MP_VERBOSE(priv, "DVB_OPEN_DEVICES: frontend: %s\n", frontend_dev);
     state->fe_fd = open(frontend_dev, O_RDWR | O_NONBLOCK | O_CLOEXEC);
     if (state->fe_fd < 0) {
@@ -188,6 +187,24 @@ int dvb_open_devices(dvb_priv_t *priv, unsigned int adapter,
                frontend_dev, errno);
         return 0;
     }
+
+    dmxno = priv->cfg_dmx;
+    if (dmxno < 0) {
+        int test_fd;
+
+        dmxno = frontend;
+        snprintf(demux_dev, sizeof(demux_dev), "/dev/dvb/adapter%u/demux%u",
+                 adapter, dmxno);
+        test_fd = open(demux_dev, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+        if (test_fd >= 0)
+            close(test_fd);
+        else if (errno == ENOENT)
+            dmxno = 0;
+
+    }
+    snprintf(demux_dev, sizeof(demux_dev), "/dev/dvb/adapter%u/demux%u", adapter, dmxno);
+    state->cur_demuxer = dmxno;
+
     state->demux_fds_cnt = 0;
     MP_VERBOSE(priv, "DVB_OPEN_DEVICES(%d)\n", demux_cnt);
     for (i = 0; i < demux_cnt; i++) {
@@ -201,6 +218,21 @@ int dvb_open_devices(dvb_priv_t *priv, unsigned int adapter,
             state->demux_fds_cnt++;
         }
     }
+
+    dvrno = priv->cfg_dvr;
+    if (dvrno < 0) {
+        int test_fd;
+
+        dvrno = dmxno;
+        snprintf(dvr_dev, sizeof(dvr_dev), "/dev/dvb/adapter%u/dvr%u",
+                 adapter, dvrno);
+        test_fd = open(dvr_dev, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+        if (test_fd >= 0)
+            close(test_fd);
+        else if (errno == ENOENT)
+            dvrno = 0;
+    }
+    snprintf(dvr_dev, sizeof(dvr_dev), "/dev/dvb/adapter%u/dvr%u", adapter, dvrno);
 
     state->dvr_fd = open(dvr_dev, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
     if (state->dvr_fd < 0) {
@@ -219,8 +251,8 @@ int dvb_fix_demuxes(dvb_priv_t *priv, unsigned int cnt)
 
     dvb_state_t* state = priv->state;
 
-    snprintf(demux_dev, sizeof(demux_dev), "/dev/dvb/adapter%d/demux0",
-            state->adapters[state->cur_adapter].devno);
+    snprintf(demux_dev, sizeof(demux_dev), "/dev/dvb/adapter%d/demux%d",
+            state->adapters[state->cur_adapter].devno, state->cur_demuxer);
     MP_VERBOSE(priv, "FIX %d -> %d\n", state->demux_fds_cnt, cnt);
     if (state->demux_fds_cnt >= cnt) {
         for (i = state->demux_fds_cnt - 1; i >= (int)cnt; i--) {
@@ -234,7 +266,8 @@ int dvb_fix_demuxes(dvb_priv_t *priv, unsigned int cnt)
                                       O_RDWR | O_NONBLOCK | O_CLOEXEC);
             MP_VERBOSE(priv, "FIX, OPEN fd(%d): %d\n", i, state->demux_fds[i]);
             if (state->demux_fds[i] < 0) {
-                MP_ERR(priv, "ERROR OPENING DEMUX 0: %d\n", errno);
+                MP_ERR(priv, "ERROR OPENING DEMUX %d: %d\n",
+                       state->cur_demuxer, errno);
                 return 0;
             } else
                 state->demux_fds_cnt++;
@@ -280,7 +313,8 @@ int dvb_get_pmt_pid(dvb_priv_t *priv, int devno, int service_id)
     /* We need special filters on the demux,
        so open one locally, and close also here. */
     char demux_dev[PATH_MAX];
-    snprintf(demux_dev, sizeof(demux_dev), "/dev/dvb/adapter%d/demux0", devno);
+    snprintf(demux_dev, sizeof(demux_dev), "/dev/dvb/adapter%d/demux%d",
+             devno, priv->state->cur_demuxer);
 
     struct dmx_sct_filter_params fparams;
 
