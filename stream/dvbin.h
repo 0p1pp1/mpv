@@ -103,6 +103,7 @@ typedef struct {
     dvb_adapter_config_t *adapters;
     unsigned int cur_adapter;
     unsigned int cur_frontend;
+    unsigned int cur_demuxer;
 
     int fe_fd;
     int dvr_fd;
@@ -125,6 +126,7 @@ typedef struct {
     char *cfg_file;
     int cfg_full_transponder;
     int cfg_channel_switch_offset;
+    int cfg_scan_all_devs;
 } dvb_opts_t;
 
 typedef struct {
