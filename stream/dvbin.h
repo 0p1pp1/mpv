@@ -114,6 +114,9 @@ typedef struct {
 
     char *cfg_prog;
     int cfg_devno;
+    int cfg_fe;
+    int cfg_dmx;
+    int cfg_dvr;
     int cfg_timeout;
     char *cfg_file;
 
