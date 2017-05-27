@@ -80,6 +80,7 @@ const struct m_sub_options stream_dvb_conf = {
         {"full-transponder", OPT_BOOL(cfg_full_transponder)},
         {"channel-switch-offset", OPT_INT(cfg_channel_switch_offset),
             .flags = UPDATE_DVB_PROG},
+        {"scan-all-devs", OPT_BOOL(cfg_scan_all_devs)},
         {0}
     },
     .size = sizeof(dvb_opts_t),
@@ -774,7 +775,7 @@ int dvb_set_channel(stream_t *stream, unsigned int adapter, unsigned int n)
                 MP_VERBOSE(stream, "dvb_set_channel: PMT-PID for service %d "
                            "not resolved yet, parsing PAT...\n",
                            channel->service_id);
-                int pmt_pid = dvb_get_pmt_pid(priv, adapter, channel->service_id);
+                int pmt_pid = dvb_get_pmt_pid(priv, devno, channel->service_id);
                 MP_VERBOSE(stream, "found PMT-PID: %d\n", pmt_pid);
                 channel->pids[i] = pmt_pid;
                 break;
@@ -844,6 +845,7 @@ void dvbin_close(stream_t *stream)
     state->is_on = false;
     state->cur_adapter = -1;
     state->cur_frontend = -1;
+    state->cur_demuxer = -1;
 
     mp_mutex_lock(&global_dvb_state_lock);
     TA_FREEP(&global_dvb_state);
@@ -960,6 +962,7 @@ static int dvb_open(stream_t *stream)
         // The following setup only has to be done once.
 
         state->cur_frontend = -1;
+        state->cur_demuxer = -1;
 
         if (!dvb_streaming_start(stream, priv->prog))
             goto err_out;
@@ -1013,6 +1016,30 @@ static bool parse_dvb_args(dvb_priv_t *priv, bstr args)
     return true;
 }
 
+static void setup_devno(stream_t *stream)
+{
+    dvb_priv_t *priv = stream->priv;
+    bstr devno;
+
+    if (priv->opts->cfg_devno != 0) {
+        priv->devno = priv->opts->cfg_devno;
+        return;
+    }
+
+    devno = bstr_splitchar(bstr0(stream->path), NULL, '@');
+    if (devno.len > 1) {
+        bstr r;
+
+        devno.len --;
+        priv->devno = bstrtoll(devno, &r, 0);
+        if (r.len == 0 && priv->devno >= 0 && priv->devno < MAX_ADAPTERS)
+            return;
+        MP_ERR(stream, "invalid devno: '%.*s'\n", BSTR_P(devno));
+    }
+    priv->devno = priv->opts->cfg_devno;
+    return;
+}
+
 int dvb_parse_path(stream_t *stream)
 {
     dvb_priv_t *priv = stream->priv;
@@ -1032,20 +1059,8 @@ int dvb_parse_path(stream_t *stream)
             return 0;
         }
 
-
-    if (priv->opts->cfg_devno != 0) {
-        priv->devno = priv->opts->cfg_devno;
-    } else if (devno.len) {
-        bstr r;
-        priv->devno = bstrtoll(devno, &r, 0);
-        if (r.len || priv->devno < 0 || priv->devno >= MAX_ADAPTERS) {
-            MP_ERR(stream, "invalid devno: '%.*s'\n", BSTR_P(devno));
-            return 0;
-        }
-    } else {
-        // Default to the default of cfg_devno.
-        priv->devno = priv->opts->cfg_devno;
-    }
+    if (priv->opts->cfg_scan_all_devs)
+        setup_devno(stream);
 
     // Current adapter is derived from devno.
     state->cur_adapter = -1;
@@ -1100,11 +1115,20 @@ dvb_state_t *dvb_get_state(stream_t *stream)
     state->stream_used = true;
     state->fe_fd = state->dvr_fd = -1;
 
+    setup_devno(stream);
     for (unsigned int i = 0; i < MAX_ADAPTERS; i++) {
         dvb_channels_list_t *list = NULL;
         unsigned int delsys_mask[MAX_FRONTENDS];
+        if (!priv->opts->cfg_scan_all_devs && i != priv->devno)
+            continue;
+
+        list = NULL;
         for (unsigned int f = 0; f < MAX_FRONTENDS; f++) {
             char filename[100];
+            if (priv->opts->cfg_fe >= 0 &&
+                !priv->opts->cfg_scan_all_devs && f != priv->opts->cfg_fe)
+                continue;
+
             snprintf(filename, sizeof(filename), "/dev/dvb/adapter%u/frontend%u", i, f);
             int fd = open(filename, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
             if (fd < 0)
