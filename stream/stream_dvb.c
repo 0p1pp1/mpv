@@ -74,6 +74,9 @@ const struct m_sub_options stream_dvb_conf = {
     .opts = (const m_option_t[]) {
         OPT_STRING("prog", cfg_prog, 0),
         OPT_INTRANGE("card", cfg_devno, 0, 0, MAX_ADAPTERS),
+        OPT_INTRANGE("frontend", cfg_fe, 0, 0, MAX_FRONTENDS),
+        OPT_INTRANGE("demux", cfg_dmx, 0, 0, MAX_FRONTENDS),
+        OPT_INTRANGE("dvr", cfg_dvr, 0, 0, MAX_FRONTENDS),
         OPT_INTRANGE("timeout", cfg_timeout, 0, 1, 30),
         OPT_STRING("file", cfg_file, M_OPT_FILE),
         OPT_FLAG("full-transponder", cfg_full_transponder, 0),
@@ -83,6 +86,9 @@ const struct m_sub_options stream_dvb_conf = {
     .defaults = &(const dvb_priv_t){
         .cfg_prog = NULL,
         .cfg_devno = 0,
+        .cfg_fe = 0,
+        .cfg_dmx = -1,
+        .cfg_dvr = -1,
         .cfg_timeout = 30,
     },
 };
@@ -1129,6 +1135,36 @@ err_out:
     return STREAM_ERROR;
 }
 
+static bool parse_dvb_args(dvb_priv_t *priv, bstr args)
+{
+    bstr arg, rest;
+
+    for (rest = args; rest.len > 0 && rest.start[0];) {
+        bstr name, val, r;
+        int v;
+
+        bstr_split_tok(rest, "&", &arg, &rest);
+        if (arg.len == 0 || arg.start[0] == '\0')
+            continue;
+
+        if (!bstr_split_tok(arg, "=", &name, &val))
+            return false;
+        v = bstrtoll(val, &r, 0);
+        if (r.len > 0 || v < 0 || v >= MAX_FRONTENDS)
+            return false;
+
+        if (bstr_equals0(name, "frontend"))
+            priv->cfg_fe = v;
+        else if (bstr_equals0(name, "demuxer"))
+            priv->cfg_dmx = v;
+        else if (bstr_equals0(name, "dvr"))
+            priv->cfg_dvr = v;
+        else
+            return false;
+    }
+    return true;
+}
+
 dvb_state_t *dvb_get_state(stream_t *stream)
 {
     if (global_dvb_state != NULL) {
@@ -1145,11 +1181,18 @@ dvb_state_t *dvb_get_state(stream_t *stream)
     dvb_adapter_config_t *adapters = NULL, *tmp;
     dvb_state_t *state = NULL;
     bstr prog, devno;
+    bstr args;
 
     if (!bstr_split_tok(bstr0(stream->path), "@", &devno, &prog)) {
         prog = devno;
         devno.len = 0;
     }
+    if (bstr_split_tok(prog, "?", &prog, &args))
+        if (!parse_dvb_args(priv, args)) {
+            MP_ERR(stream, "invalid argments: '%.*s'\n", BSTR_P(args));
+            return NULL;
+        }
+
     if (prog.len) {
         talloc_free(priv->cfg_prog);
         priv->cfg_prog = bstrto0(NULL, prog);
@@ -1163,8 +1206,9 @@ dvb_state_t *dvb_get_state(stream_t *stream)
         }
     }
 
-    MP_VERBOSE(stream, "DVB_CONFIG: prog=%s, devno=%d\n",
-               priv->cfg_prog, priv->cfg_devno);
+    MP_VERBOSE(stream, "DVB_CONFIG: prog=%s, devno=%d, fe=%d dmx=%d dvr=%d\n",
+               priv->cfg_prog, priv->cfg_devno,
+               priv->cfg_fe, priv->cfg_dmx, priv->cfg_dvr);
 
     state = malloc(sizeof(dvb_state_t));
     if (state == NULL)
@@ -1176,7 +1220,9 @@ dvb_state_t *dvb_get_state(stream_t *stream)
     for (unsigned int i = 0; i < MAX_ADAPTERS; i++) {
         list = NULL;
         for (unsigned int f = 0; f < MAX_FRONTENDS; f++) {
-            snprintf(filename, sizeof(filename), "/dev/dvb/adapter%u/frontend%u", i, f);
+            snprintf(filename, sizeof(filename), "/dev/dvb/adapter%u/frontend%u",
+                     (priv->cfg_devno + i) % MAX_ADAPTERS,
+                     (priv->cfg_fe + f) % MAX_FRONTENDS);
             int fd = open(filename, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
             if (fd < 0)
                 continue;
