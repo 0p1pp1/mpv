@@ -78,6 +78,7 @@ const struct m_sub_options stream_dvb_conf = {
         OPT_INTRANGE("timeout", cfg_timeout, 0, 1, 30),
         OPT_STRING("file", cfg_file, M_OPT_FILE),
         OPT_FLAG("full-transponder", cfg_full_transponder, 0),
+        OPT_FLAG("scan-all-devs", cfg_scan_all_devs, 0),
         {0}
     },
     .size = sizeof(dvb_priv_t),
@@ -703,6 +704,7 @@ int dvb_set_channel(stream_t *stream, unsigned int adapter, unsigned int n)
     char buf[4096];
     dvb_state_t *state = (dvb_state_t *) priv->state;
     int devno;
+    int feno, dmxno, dvrno;
     int i;
 
     if (adapter >= state->adapters_count) {
@@ -712,6 +714,9 @@ int dvb_set_channel(stream_t *stream, unsigned int adapter, unsigned int n)
     }
 
     devno = state->adapters[adapter].devno;
+    feno = state->adapters[adapter].feno;
+    dmxno = state->adapters[adapter].dmxno;
+    dvrno = state->adapters[adapter].dvrno;
     new_list = state->adapters[adapter].list;
     if (n > new_list->NUM_CHANNELS) {
         MP_ERR(stream, "dvb_set_channel: INVALID CHANNEL NUMBER: %d, for "
@@ -729,7 +734,7 @@ int dvb_set_channel(stream_t *stream, unsigned int adapter, unsigned int n)
         while (dvb_streaming_read(stream, buf, sizeof(buf)) > 0) {}
         if (state->cur_adapter != adapter) {
             dvbin_close(stream);
-            if (!dvb_open_devices(priv, devno, channel->pids_cnt)) {
+            if (!dvb_open_devices(priv, devno, feno, dmxno, dvrno, channel->pids_cnt)) {
                 MP_ERR(stream, "DVB_SET_CHANNEL, COULDN'T OPEN DEVICES OF "
                        "ADAPTER: %d, EXIT\n", devno);
                 return 0;
@@ -741,7 +746,7 @@ int dvb_set_channel(stream_t *stream, unsigned int adapter, unsigned int n)
                 return 0;
         }
     } else {
-        if (!dvb_open_devices(priv, devno, channel->pids_cnt)) {
+        if (!dvb_open_devices(priv, devno, feno, dmxno, dvrno, channel->pids_cnt)) {
             MP_ERR(stream, "DVB_SET_CHANNEL2, COULDN'T OPEN DEVICES OF "
                    "ADAPTER: %d, EXIT\n", devno);
             return 0;
@@ -777,7 +782,7 @@ int dvb_set_channel(stream_t *stream, unsigned int adapter, unsigned int n)
                 MP_VERBOSE(stream, "DVB_SET_CHANNEL: PMT-PID for service %d "
                            "not resolved yet, parsing PAT...\n",
                            channel->service_id);
-                int pmt_pid = dvb_get_pmt_pid(priv, adapter, channel->service_id);
+                int pmt_pid = dvb_get_pmt_pid(priv, devno, dmxno, channel->service_id);
                 MP_VERBOSE(stream, "DVB_SET_CHANNEL: Found PMT-PID: %d\n",
                            pmt_pid);
                 channel->pids[i] = pmt_pid;
@@ -1018,7 +1023,8 @@ static int dvb_open(stream_t *stream)
 
       state->cur_adapter = -1;
       for (i = 0; i < state->adapters_count; i++) {
-          if (state->adapters[i].devno == priv->cfg_devno) {
+          if (state->adapters[i].devno == priv->cfg_devno &&
+              state->adapters[i].feno == priv->cfg_fe) {
               state->cur_adapter = i;
               break;
           }
@@ -1031,8 +1037,9 @@ static int dvb_open(stream_t *stream)
       }
       state->timeout = priv->cfg_timeout;
 
-      MP_VERBOSE(stream, "OPEN_DVB: prog=%s, devno=%d\n",
-                 priv->cfg_prog, state->adapters[state->cur_adapter].devno);
+      MP_VERBOSE(stream, "OPEN_DVB: prog=%s, devno=%d, feno=%d\n",
+                 priv->cfg_prog, state->adapters[state->cur_adapter].devno,
+                 state->adapters[state->cur_adapter].feno);
 
       if ((priv->cfg_prog == NULL || priv->cfg_prog[0] == 0) &&
           state->adapters[state->cur_adapter].list != NULL) {
@@ -1144,8 +1151,15 @@ dvb_state_t *dvb_get_state(stream_t *stream)
     state->stream_used = true;
     state->fe_fd = state->dvr_fd = -1;
     for (int i = 0; i < MAX_ADAPTERS; i++) {
-        snprintf(filename, sizeof(filename), "/dev/dvb/adapter%d/frontend%d",
-                 (priv->cfg_devno + i) % MAX_ADAPTERS, priv->cfg_fe);
+      if (!priv->cfg_scan_all_devs && i != priv->cfg_devno)
+          continue;
+
+      for (int j = 0; j < MAX_FE_PER_ADAPTER; j++) {
+        if (!priv->cfg_scan_all_devs && j != priv->cfg_fe)
+            continue;
+
+        snprintf(filename, sizeof(filename),
+                 "/dev/dvb/adapter%d/frontend%d", i, j);
         int fd = open(filename, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
         if (fd < 0) {
             mp_verbose(log, "DVB_CONFIG, can't open device %s, skipping\n",
@@ -1231,9 +1245,17 @@ dvb_state_t *dvb_get_state(stream_t *stream)
 
         state->adapters = adapters;
         state->adapters[state->adapters_count].devno = i;
+        state->adapters[state->adapters_count].feno = j;
+        state->adapters[state->adapters_count].dmxno =
+            (i == priv->cfg_devno && j == priv->cfg_fe && priv->cfg_dmx != -1) ?
+            priv->cfg_dmx : j;
+        state->adapters[state->adapters_count].dvrno =
+            (i == priv->cfg_devno && j == priv->cfg_fe && priv->cfg_dvr != -1) ?
+            priv->cfg_dvr : j;
         state->adapters[state->adapters_count].delsys_mask = delsys_mask;
         state->adapters[state->adapters_count].list = list;
         state->adapters_count++;
+      }
     }
 
     if (state->adapters_count == 0) {

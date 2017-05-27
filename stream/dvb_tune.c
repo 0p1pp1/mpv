@@ -173,16 +173,17 @@ old_api:
     return ret_mask;
 }
 
-int dvb_open_devices(dvb_priv_t *priv, unsigned int n, unsigned int demux_cnt)
+int dvb_open_devices(dvb_priv_t *priv, unsigned int n, unsigned int fe,
+                     unsigned int dmx, unsigned int dvr, unsigned int demux_cnt)
 {
     unsigned int i;
     char frontend_dev[PATH_MAX], dvr_dev[PATH_MAX], demux_dev[PATH_MAX];
 
     dvb_state_t* state = priv->state;
 
-    snprintf(frontend_dev, sizeof(frontend_dev), "/dev/dvb/adapter%u/frontend0", n);
-    snprintf(dvr_dev, sizeof(dvr_dev), "/dev/dvb/adapter%u/dvr0", n);
-    snprintf(demux_dev, sizeof(demux_dev), "/dev/dvb/adapter%u/demux0", n);
+    snprintf(frontend_dev, sizeof(frontend_dev), "/dev/dvb/adapter%u/frontend%u", n, fe);
+    snprintf(dvr_dev, sizeof(dvr_dev), "/dev/dvb/adapter%u/dvr%u", n, dvr);
+    snprintf(demux_dev, sizeof(demux_dev), "/dev/dvb/adapter%u/demux%u", n, dmx);
     state->fe_fd = open(frontend_dev, O_RDWR | O_NONBLOCK | O_CLOEXEC);
     if (state->fe_fd < 0) {
         MP_ERR(priv, "ERROR OPENING FRONTEND DEVICE %s: ERRNO %d\n",
@@ -220,8 +221,9 @@ int dvb_fix_demuxes(dvb_priv_t *priv, unsigned int cnt)
 
     dvb_state_t* state = priv->state;
 
-    snprintf(demux_dev, sizeof(demux_dev), "/dev/dvb/adapter%d/demux0",
-            state->adapters[state->cur_adapter].devno);
+    snprintf(demux_dev, sizeof(demux_dev), "/dev/dvb/adapter%d/demux%d",
+            state->adapters[state->cur_adapter].devno,
+            state->adapters[state->cur_adapter].dmxno);
     MP_VERBOSE(priv, "FIX %d -> %d\n", state->demux_fds_cnt, cnt);
     if (state->demux_fds_cnt >= cnt) {
         for (i = state->demux_fds_cnt - 1; i >= (int)cnt; i--) {
@@ -276,7 +278,7 @@ int dvb_set_ts_filt(dvb_priv_t *priv, int fd, uint16_t pid,
     return 1;
 }
 
-int dvb_get_pmt_pid(dvb_priv_t *priv, int devno, int service_id)
+int dvb_get_pmt_pid(dvb_priv_t *priv, int devno, int dmxno, int service_id)
 {
     /* We need special filters on the demux,
        so open one locally, and close also here. */
