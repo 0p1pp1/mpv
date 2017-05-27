@@ -86,6 +86,9 @@ typedef struct {
 
 typedef struct {
     int devno;
+    int feno;
+    int dmxno;
+    int dvrno;
     unsigned int delsys_mask;
     dvb_channels_list_t *list;
 } dvb_adapter_config_t;
@@ -121,6 +124,7 @@ typedef struct {
     char *cfg_file;
 
     int cfg_full_transponder;
+    int cfg_scan_all_devs;
 } dvb_priv_t;
 
 
