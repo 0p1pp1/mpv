@@ -1268,6 +1268,11 @@ static void setup_prog(struct MPContext *mpctx)
 
     if (mpctx->opts->progid >= 0)
         progid = mpctx->opts->progid;
+    else {
+        r = demux_stream_control(mpctx->demuxer, STREAM_CTRL_DVB_GET_SID, &progid);
+        if (r != CONTROL_OK)
+            return;
+    }
     prog.progid = progid;
     prog.vlangs = mpctx->opts->stream_lang[STREAM_VIDEO];
     prog.alangs = mpctx->opts->stream_lang[STREAM_AUDIO];
