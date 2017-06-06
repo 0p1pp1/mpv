@@ -684,6 +684,27 @@ old_api:
     return check_status(priv, fd_frontend, timeout);
 }
 
+int dvb_tune_s2(dvb_priv_t *priv, dvb_channel_t *ch, int timeout)
+{
+    dvb_state_t* state = priv->state;
+    int ris;
+
+    MP_INFO(priv, "dvb_tune %s Freq: %lu\n",
+            get_dvb_delsys(ch->delsys), (long unsigned int) ch->freq);
+
+    ris = ioctl(state->fe_fd, FE_SET_PROPERTY, &ch->tvps);
+    if (ris != 0) {
+        MP_ERR(priv, "ERROR tuning channel\n");
+        return -1;
+    }
+
+    ris = check_status(priv, state->fe_fd, timeout);
+    if(ris != 0)
+        MP_INFO(priv, "dvb_tune, TUNING FAILED\n");
+
+    return ris == 0;
+}
+
 int dvb_tune(dvb_priv_t *priv, unsigned int delsys,
              int freq, char pol, int srate, int diseqc,
              int stream_id, fe_spectral_inversion_t specInv,

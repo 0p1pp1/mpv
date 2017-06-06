@@ -31,6 +31,7 @@ int dvb_open_devices(dvb_priv_t *priv, unsigned int n, unsigned int fe,
 int dvb_fix_demuxes(dvb_priv_t *priv, unsigned int cnt);
 int dvb_set_ts_filt(dvb_priv_t *priv, int fd, uint16_t pid, dmx_pes_type_t pestype);
 int dvb_get_pmt_pid(dvb_priv_t *priv, int devno, int dmxno, int service_id);
+int dvb_tune_s2(dvb_priv_t *priv, dvb_channel_t *ch, int timeout);
 int dvb_tune(dvb_priv_t *priv, unsigned int delsys,
              int freq, char pol, int srate, int diseqc,
              int stream_id, fe_spectral_inversion_t specInv,

@@ -76,6 +76,7 @@ typedef struct {
     fe_guard_interval_t gi;
     fe_code_rate_t cr, cr_lp;
     fe_hierarchy_t hier;
+    struct dtv_properties tvps;
 } dvb_channel_t;
 
 typedef struct {
@@ -134,6 +135,8 @@ typedef struct {
 #    define SYS_DVBT                3
 #    define SYS_DVBS                5
 #    define SYS_DVBS2               6
+#    define SYS_ISDBT               8
+#    define SYS_ISDBS               9
 #    define SYS_ATSC                11
 #    define SYS_DVBT2               16
 #    define SYS_DVBC_ANNEX_C        18
@@ -157,6 +160,8 @@ typedef struct {
         DELSYS_BIT(SYS_DVBT) |                                          \
         DELSYS_BIT(SYS_DVBS) |                                          \
         DELSYS_BIT(SYS_DVBS2) |                                         \
+        DELSYS_BIT(SYS_ISDBT) |                                         \
+        DELSYS_BIT(SYS_ISDBS) |                                         \
         DELSYS_BIT(SYS_ATSC) |                                          \
         DELSYS_BIT(SYS_DVBT2) |                                         \
         DELSYS_BIT(SYS_DVBC_ANNEX_C)                                    \
@@ -168,6 +173,8 @@ typedef struct {
         DELSYS_BIT(SYS_DVBT) |                                          \
         DELSYS_BIT(SYS_DVBS) |                                          \
         DELSYS_BIT(SYS_DVBS2) |                                         \
+        DELSYS_BIT(SYS_ISDBT) |                                         \
+        DELSYS_BIT(SYS_ISDBS) |                                         \
         DELSYS_BIT(SYS_DVBT2) |                                         \
         DELSYS_BIT(SYS_DVBC_ANNEX_C)                                    \
     )
