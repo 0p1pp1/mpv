@@ -42,6 +42,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <pthread.h>
+#include <ctype.h>
 
 #include <libavutil/avstring.h>
 
@@ -205,6 +206,172 @@ static bool parse_pid_string(struct mp_log *log, char *pid_string,
     return false;
 }
 
+#define S2API_SYMDEF(x) {#x, x}
+
+static const struct symbol_def_s
+{
+    const char *name;
+    const int id;
+} s2api_symbols[] = {
+    S2API_SYMDEF (DTV_UNDEFINED), S2API_SYMDEF (DTV_TUNE),
+    S2API_SYMDEF (DTV_CLEAR), S2API_SYMDEF (DTV_FREQUENCY),
+    S2API_SYMDEF (DTV_MODULATION), S2API_SYMDEF (DTV_BANDWIDTH_HZ),
+    S2API_SYMDEF (DTV_INVERSION), S2API_SYMDEF (DTV_DISEQC_MASTER),
+    S2API_SYMDEF (DTV_SYMBOL_RATE), S2API_SYMDEF (DTV_INNER_FEC),
+    S2API_SYMDEF (DTV_VOLTAGE), S2API_SYMDEF (DTV_TONE),
+    S2API_SYMDEF (DTV_PILOT), S2API_SYMDEF (DTV_ROLLOFF),
+    S2API_SYMDEF (DTV_DISEQC_SLAVE_REPLY),
+    S2API_SYMDEF (DTV_FE_CAPABILITY_COUNT), S2API_SYMDEF (DTV_FE_CAPABILITY),
+    S2API_SYMDEF (DTV_DELIVERY_SYSTEM),
+    S2API_SYMDEF (DTV_ISDBT_PARTIAL_RECEPTION),
+    S2API_SYMDEF (DTV_ISDBT_SOUND_BROADCASTING),
+    S2API_SYMDEF (DTV_ISDBT_SB_SUBCHANNEL_ID),
+    S2API_SYMDEF (DTV_ISDBT_SB_SEGMENT_IDX),
+    S2API_SYMDEF (DTV_ISDBT_SB_SEGMENT_COUNT),
+    S2API_SYMDEF (DTV_ISDBT_LAYERA_FEC),
+    S2API_SYMDEF (DTV_ISDBT_LAYERA_MODULATION),
+    S2API_SYMDEF (DTV_ISDBT_LAYERA_SEGMENT_COUNT),
+    S2API_SYMDEF (DTV_ISDBT_LAYERA_TIME_INTERLEAVING),
+    S2API_SYMDEF (DTV_ISDBT_LAYERB_FEC),
+    S2API_SYMDEF (DTV_ISDBT_LAYERB_MODULATION),
+    S2API_SYMDEF (DTV_ISDBT_LAYERB_SEGMENT_COUNT),
+    S2API_SYMDEF (DTV_ISDBT_LAYERB_TIME_INTERLEAVING),
+    S2API_SYMDEF (DTV_ISDBT_LAYERC_FEC),
+    S2API_SYMDEF (DTV_ISDBT_LAYERC_MODULATION),
+    S2API_SYMDEF (DTV_ISDBT_LAYERC_SEGMENT_COUNT),
+    S2API_SYMDEF (DTV_ISDBT_LAYERC_TIME_INTERLEAVING),
+    S2API_SYMDEF (DTV_API_VERSION),
+    S2API_SYMDEF (DTV_CODE_RATE_HP), S2API_SYMDEF (DTV_CODE_RATE_LP),
+    S2API_SYMDEF (DTV_GUARD_INTERVAL), S2API_SYMDEF (DTV_TRANSMISSION_MODE),
+    S2API_SYMDEF (DTV_HIERARCHY),
+    S2API_SYMDEF (DTV_ISDBT_LAYER_ENABLED), S2API_SYMDEF (DTV_STREAM_ID),
+    {"DTV_ISDBS_TS_ID", 42},
+    S2API_SYMDEF (PILOT_ON), S2API_SYMDEF (PILOT_OFF),
+    S2API_SYMDEF (PILOT_AUTO),
+    S2API_SYMDEF (ROLLOFF_35), S2API_SYMDEF (ROLLOFF_20),
+    S2API_SYMDEF (ROLLOFF_25), S2API_SYMDEF (ROLLOFF_AUTO),
+    S2API_SYMDEF (SYS_UNDEFINED), S2API_SYMDEF (SYS_DVBC_ANNEX_AC),
+    S2API_SYMDEF (SYS_DVBC_ANNEX_B), S2API_SYMDEF (SYS_DVBT),
+    S2API_SYMDEF (SYS_DSS), S2API_SYMDEF (SYS_DVBS),
+    S2API_SYMDEF (SYS_DVBS2), S2API_SYMDEF (SYS_DVBH),
+    S2API_SYMDEF (SYS_ISDBT), S2API_SYMDEF (SYS_ISDBS),
+    S2API_SYMDEF (SYS_ISDBC), S2API_SYMDEF (SYS_ATSC),
+    S2API_SYMDEF (SYS_ATSCMH), S2API_SYMDEF (SYS_DMBTH),
+    S2API_SYMDEF (SYS_CMMB), S2API_SYMDEF (SYS_DAB),
+    S2API_SYMDEF (SEC_VOLTAGE_13), S2API_SYMDEF (SEC_VOLTAGE_18),
+    S2API_SYMDEF (SEC_VOLTAGE_OFF),
+    {NULL, 0}
+};
+
+static int s2api_id (const char *name)
+{
+    const struct symbol_def_s *p;
+
+    if (!name || *name == '\0')
+        return 0;
+
+    for (p = s2api_symbols; p->name; p++)
+        if (!strcmp(name, p->name))
+            return p->id;
+    return 0;
+}
+
+static bool parse_s2api_props(char *txt, dvb_channel_t *ch, int type)
+{
+    char *saved;
+    char pname[256], val[256];
+    int has_dtv_tune = 0, has_freq = 0;
+    struct dtv_property props[DTV_IOCTL_MAX_MSGS];
+
+    if (!txt)
+        return false;
+
+    txt = dvb_strtok_r(txt, "|", &saved);
+    for ( ; txt; txt = dvb_strtok_r(NULL, "|", &saved)) {
+        char *r;
+
+        if (sscanf(txt, "%255[^|=]=%255[^|=]", pname, val) != 2)
+            break;
+        if (pname[0] == '\0' || val[0] == '\0')
+            break;
+
+        props[ch->tvps.num].cmd = s2api_id(pname);
+        if (props[ch->tvps.num].cmd == 0)
+            props[ch->tvps.num].cmd = strtoul(pname, &r, 0);
+        if (props[ch->tvps.num].cmd == 0)
+            break;
+
+        if (val[0] != '[') {
+            props[ch->tvps.num].u.data = strtoul(val, &r, 0);
+            if (isalpha(*r))
+                props[ch->tvps.num].u.data = s2api_id(val);
+        } else {
+            int i, len;
+
+            len = strtoul(val + 1, &r, 0);
+            if (*r != ']' || len > 32)
+                break;
+            props[ch->tvps.num].u.buffer.len = len;
+            for (i = 0; i < len; i++) {
+                int d;
+
+                txt = r;
+                if (*txt == '\0')
+                    break;
+                d = strtoul(++txt, &r, 0);
+                if ((*r != ',' && *r != '\0') || d > 255)
+                    break;
+                props[ch->tvps.num].u.buffer.data[i] = d;
+            }
+            if (i != len)
+                break;
+        }
+
+        if (props[ch->tvps.num].cmd == DTV_FREQUENCY) {
+            ch->freq = props[ch->tvps.num].u.data;
+            has_freq = 1;
+        } else if (props[ch->tvps.num].cmd == DTV_TUNE)
+            has_dtv_tune = 1;
+        else if (props[ch->tvps.num].cmd == DTV_STREAM_ID)
+            ch->stream_id = props[ch->tvps.num].u.data;
+        else if (props[ch->tvps.num].cmd == DTV_DELIVERY_SYSTEM &&
+               props[ch->tvps.num].u.data != type &&
+               type != SYS_UNDEFINED)
+            break;
+        else if (props[ch->tvps.num].cmd == 0)
+            break;
+
+        ch->tvps.num++;
+        if (ch->tvps.num >= DTV_IOCTL_MAX_MSGS)
+            break;
+    }
+
+    if (txt || !has_freq) {
+        ch->freq = 0;
+        ch->tvps.num = 0;
+        ch->tvps.props = NULL;
+        return false;
+    }
+    if (!has_dtv_tune) {
+        if (ch->tvps.num == DTV_IOCTL_MAX_MSGS)
+            ch->tvps.num--;
+        props[ch->tvps.num].cmd = DTV_TUNE;
+        props[ch->tvps.num].u.data = 1;
+        ch->tvps.num++;
+    }
+
+    ch->tvps.props = malloc (ch->tvps.num * sizeof(struct dtv_property));
+    if (!ch->tvps.props) {
+        ch->freq = 0;
+        ch->tvps.num = 0;
+        return false;
+    }
+    memcpy(ch->tvps.props, props, ch->tvps.num * sizeof(struct dtv_property));
+    ch->pids[0] = 8192;
+    ch->pids_cnt = 1;
+    return true;
+}
+
 static dvb_channels_list_t *dvb_get_channels(struct mp_log *log,
                                            dvb_channels_list_t *list_add,
                                            int cfg_full_transponder,
@@ -224,6 +391,7 @@ static dvb_channels_list_t *dvb_get_channels(struct mp_log *log,
     char tmp_lcr[256], tmp_hier[256], inv[256], bw[256], cr[256], mod[256],
          transm[256], gi[256], vpid_str[256], apid_str[256], tpid_str[256],
          vdr_par_str[256], vdr_loc_str[256];
+    char dtv_props[256];
     const char *cbl_conf =
         "%d:%255[^:]:%d:%255[^:]:%255[^:]:%255[^:]:%255[^:]\n";
     const char *sat_conf = "%d:%c:%d:%d:%255[^:]:%255[^:]\n";
@@ -234,6 +402,7 @@ static dvb_channels_list_t *dvb_get_channels(struct mp_log *log,
 #endif
     const char *vdr_conf =
         "%d:%255[^:]:%255[^:]:%d:%255[^:]:%255[^:]:%255[^:]:%*255[^:]:%d:%*d:%*d:%*d\n%n";
+    const char *s2api_conf = "%255[^:]:%i\n";
 
     mp_verbose(log, "CONFIG_READ FILE: %s, type: %s\n",
                filename, get_dvb_delsys(delsys));
@@ -298,6 +467,7 @@ static dvb_channels_list_t *dvb_get_channels(struct mp_log *log,
         ptr->hier = HIERARCHY_AUTO;
         ptr->gi = GUARD_INTERVAL_AUTO;
         ptr->trans = TRANSMISSION_MODE_AUTO;
+        ptr->tvps.num = 0;
 
         // Check if VDR-type channels.conf-line - then full line is consumed by the scan.
         int num_chars = 0;
@@ -424,6 +594,17 @@ static dvb_channels_list_t *dvb_get_channels(struct mp_log *log,
                            get_dvb_delsys(delsys),
                            list->NUM_CHANNELS, fields, ptr->name, ptr->freq,
                            ptr->srate, ptr->pol, ptr->diseqc);
+                break;
+            case SYS_ISDBS:
+            case SYS_ISDBT:
+                fields = sscanf(&line[k], s2api_conf, dtv_props, &ptr->progid);
+                ptr->service_id = ptr->progid;
+                parse_s2api_props(dtv_props, ptr, delsys);
+                mp_verbose(log, "%s, NUM: %d, NUM_PROPS: %d, NAME: %s, "
+                           "FREQ: %d, StreamID: %d, SID: %d",
+                           get_dvb_delsys(delsys),
+                           list->NUM_CHANNELS, ptr->tvps.num, ptr->name,
+                           ptr->freq, ptr->stream_id, ptr->service_id);
                 break;
             default:
                 break;
@@ -650,8 +831,10 @@ void dvb_free_state(dvb_state_t *state)
         if (!state->adapters[i].list)
             continue;
         if (state->adapters[i].list->channels) {
-            for (j = 0; j < state->adapters[i].list->NUM_CHANNELS; j++)
+            for (j = 0; j < state->adapters[i].list->NUM_CHANNELS; j++) {
                 free(state->adapters[i].list->channels[j].name);
+                free(state->adapters[i].list->channels[j].tvps.props);
+            }
             free(state->adapters[i].list->channels);
         }
         free(state->adapters[i].list);
@@ -762,6 +945,10 @@ int dvb_set_channel(stream_t *stream, unsigned int adapter, unsigned int n)
     stream_drop_buffers(stream);
 
     if (channel->freq != state->last_freq) {
+        if (channel->delsys == SYS_ISDBT || channel->delsys == SYS_ISDBS) {
+            if (!dvb_tune_s2(priv, channel, priv->cfg_timeout))
+                return 0;
+        } else
         if (!dvb_tune(priv, channel->delsys, channel->freq,
                       channel->pol, channel->srate, channel->diseqc,
                       channel->stream_id, channel->inv,
@@ -1205,6 +1392,12 @@ dvb_state_t *dvb_get_state(stream_t *stream)
                 /* PASSTOUTH */
             case SYS_DVBS2:
                 conf_file_name = "channels.conf.sat";
+                break;
+            case SYS_ISDBS:
+                conf_file_name = "channels.conf.isdbs";
+                break;
+            case SYS_ISDBT:
+                conf_file_name = "channels.conf.isdbt";
                 break;
             default:
                 continue;
