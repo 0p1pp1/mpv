@@ -3421,6 +3421,19 @@ static int mp_property_tv_channel(void *ctx, struct m_property *prop,
     return M_PROPERTY_NOT_IMPLEMENTED;
 }
 
+static void setup_dvb_prog(MPContext *mpctx)
+{
+    int r;
+    unsigned int progid;
+
+    r = prop_stream_ctrl(mpctx, STREAM_CTRL_DVB_GET_SID, &progid);
+    if (r != M_PROPERTY_OK)
+        return;
+
+    MP_VERBOSE(mpctx, "set progid:%d from DVB.\n", progid);
+    mp_property_do("program", M_PROPERTY_SET, &progid, mpctx);
+}
+
 static int mp_property_dvb_channel(void *ctx, struct m_property *prop,
                                    int action, void *arg)
 {
@@ -3431,6 +3444,8 @@ static int mp_property_dvb_channel(void *ctx, struct m_property *prop,
         r = prop_stream_ctrl(mpctx, STREAM_CTRL_DVB_SET_CHANNEL, arg);
         if (r == M_PROPERTY_OK && !mpctx->stop_play)
             mpctx->stop_play = PT_RELOAD_FILE;
+        if (r == M_PROPERTY_OK)
+            setup_dvb_prog(mpctx);
         return r;
     case M_PROPERTY_SWITCH: {
         struct m_property_switch_arg *sa = arg;
@@ -3438,11 +3453,15 @@ static int mp_property_dvb_channel(void *ctx, struct m_property *prop,
         r = prop_stream_ctrl(mpctx, STREAM_CTRL_DVB_STEP_CHANNEL, &dir);
         if (r == M_PROPERTY_OK && !mpctx->stop_play)
             mpctx->stop_play = PT_RELOAD_FILE;
+        if (r == M_PROPERTY_OK)
+            setup_dvb_prog(mpctx);
         return r;
     }
     case M_PROPERTY_GET_TYPE:
         *(struct m_option *)arg = (struct m_option){.type = &m_option_type_intpair};
         return M_PROPERTY_OK;
+    case M_PROPERTY_PRINT:
+        return prop_stream_ctrl(mpctx, STREAM_CTRL_DVB_GET_CHANNEL_NAME, arg);
     }
     return M_PROPERTY_NOT_IMPLEMENTED;
 }
@@ -3457,6 +3476,8 @@ static int mp_property_dvb_channel_name(void *ctx, struct m_property *prop,
         r = prop_stream_ctrl(mpctx, STREAM_CTRL_DVB_SET_CHANNEL_NAME, arg);
         if (r == M_PROPERTY_OK && !mpctx->stop_play)
             mpctx->stop_play = PT_RELOAD_FILE;
+        if (r == M_PROPERTY_OK)
+            setup_dvb_prog(mpctx);
         return r;
     case M_PROPERTY_SWITCH: {
         struct m_property_switch_arg *sa = arg;
@@ -3464,8 +3485,11 @@ static int mp_property_dvb_channel_name(void *ctx, struct m_property *prop,
         r = prop_stream_ctrl(mpctx, STREAM_CTRL_DVB_STEP_CHANNEL, &dir);
         if (r == M_PROPERTY_OK && !mpctx->stop_play)
             mpctx->stop_play = PT_RELOAD_FILE;
+        if (r == M_PROPERTY_OK)
+            setup_dvb_prog(mpctx);
         return r;
     }
+    case M_PROPERTY_PRINT:
     case M_PROPERTY_GET: {
         return prop_stream_ctrl(mpctx, STREAM_CTRL_DVB_GET_CHANNEL_NAME, arg);
     }

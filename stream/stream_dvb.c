@@ -1055,7 +1055,10 @@ static int dvbin_stream_control(struct stream *s, int cmd, void *arg)
     switch (cmd) {
     case STREAM_CTRL_GET_TV_FREQ:
         (*(unsigned int*)arg) = list->channels[list->current].freq;
-        return STREAM_ERROR;
+        return STREAM_OK;
+    case STREAM_CTRL_DVB_GET_SID:
+        (*(unsigned int*)arg) = list->channels[list->current].service_id;
+        return STREAM_OK;
     case STREAM_CTRL_DVB_SET_CHANNEL_NAME: {
         char *progname = *((char**)arg);
         unsigned int new_channel = (~(unsigned int)0);
