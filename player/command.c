@@ -2548,7 +2548,8 @@ static int mp_property_program(void *ctx, struct m_property *prop,
         mp_select_dmono_sub_ch(mpctx, t);
 
         mp_switch_track(mpctx, STREAM_SUB,
-                find_track_by_demuxer_id(mpctx, STREAM_VIDEO, prog.sid), 0);
+                find_track_by_demuxer_id(mpctx, STREAM_SUB, prog.sid), 0);
+        reset_playback_state(mpctx);
         print_track_list(mpctx, "Program switched:");
         return M_PROPERTY_OK;
     case M_PROPERTY_GET_TYPE:
