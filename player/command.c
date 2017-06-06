@@ -2340,6 +2340,7 @@ static int mp_property_program(void *ctx, struct m_property *prop,
             return M_PROPERTY_ERROR;
         }
         MP_INFO(mpctx, "selected program:%d.\n", prog.progid);
+        mpctx->progid = prog.progid;
         mp_switch_track(mpctx, STREAM_VIDEO,
           mp_track_by_dmxid(mpctx, STREAM_VIDEO, prog.dmxid[STREAM_VIDEO]), 0);
 
@@ -2360,6 +2361,9 @@ static int mp_property_program(void *ctx, struct m_property *prop,
             .min = -1,
             .max = (1 << 16) - 1,
         };
+        return M_PROPERTY_OK;
+    case M_PROPERTY_PRINT:
+        *(char **)arg = talloc_asprintf(NULL, "%d", mpctx->progid);
         return M_PROPERTY_OK;
     }
     return M_PROPERTY_NOT_IMPLEMENTED;
@@ -5485,10 +5489,10 @@ static void cmd_rescan_external_files(void *p)
     autoload_external_files(mpctx, cmd->abort->cancel);
     if (!cmd->args[0].v.i && mpctx->playback_initialized) {
         // somewhat fuzzy and not ideal
-        struct track *a = select_default_track(mpctx, 0, STREAM_AUDIO);
+        struct track *a = select_default_track(mpctx, 0, STREAM_AUDIO, -1);
         if (a && a->is_external)
             mp_switch_track(mpctx, STREAM_AUDIO, a, 0);
-        struct track *s = select_default_track(mpctx, 0, STREAM_SUB);
+        struct track *s = select_default_track(mpctx, 0, STREAM_SUB, -1);
         if (s && s->is_external)
             mp_switch_track(mpctx, STREAM_SUB, s, 0);
 
