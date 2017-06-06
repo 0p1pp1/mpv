@@ -873,6 +873,9 @@ static int dvbin_stream_control(struct stream *s, int cmd, void *arg)
     dvb_channels_list_t *list = state->adapters[state->cur_adapter].list;
 
     switch (cmd) {
+    case STREAM_CTRL_DVB_GET_SID:
+        (*(unsigned int*)arg) = list->channels[list->current].service_id;
+        return STREAM_OK;
     case STREAM_CTRL_GET_METADATA: {
         struct mp_tags *metadata = talloc_zero(NULL, struct mp_tags);
         char *progname = list->channels[list->current].name;
