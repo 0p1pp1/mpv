@@ -483,7 +483,7 @@ static int tune_it(dvb_priv_t *priv, int fd_frontend, unsigned int delsys,
             bandwidth_hz = 10000000;
             break;
         case BANDWIDTH_AUTO:
-            if (freq < 474000000) {
+            if (freq < 474000000 || delsys == SYS_ISDBT) {
                 bandwidth_hz = 7000000;
             } else {
                 bandwidth_hz = 8000000;
@@ -530,6 +530,9 @@ static int tune_it(dvb_priv_t *priv, int fd_frontend, unsigned int delsys,
     case SYS_DVBC_ANNEX_B:
         MP_VERBOSE(priv, "tuning %s to %d, modulation=%d\n",
                    get_dvb_delsys(delsys), freq, modulation);
+        break;
+    case SYS_ISDBS:
+        MP_VERBOSE(priv, "tuning ISDBT to %d kHz [0x%04x]\n", freq, stream_id);
         break;
     default:
         MP_VERBOSE(priv, "Unknown FE type, aborting.\n");
@@ -580,8 +583,7 @@ static int tune_it(dvb_priv_t *priv, int fd_frontend, unsigned int delsys,
         break;
     case SYS_DVBT:
     case SYS_DVBT2:
-    case SYS_ISDBT:
-        {
+         {
             struct dtv_property p[] = {
                 { .cmd = DTV_DELIVERY_SYSTEM, .u.data = delsys },
                 { .cmd = DTV_FREQUENCY, .u.data = freq },
@@ -635,6 +637,41 @@ static int tune_it(dvb_priv_t *priv, int fd_frontend, unsigned int delsys,
                 { .cmd = DTV_FREQUENCY, .u.data = freq },
                 { .cmd = DTV_INVERSION, .u.data = specInv },
                 { .cmd = DTV_MODULATION, .u.data = modulation },
+                { .cmd = DTV_TUNE },
+            };
+            struct dtv_properties cmdseq = {
+                .num = sizeof(p) / sizeof(p[0]),
+                .props = p
+            };
+            if (dvbv5_tune(priv, fd_frontend, delsys, &cmdseq) != 0) {
+                goto error_tune;
+            }
+        }
+        break;
+    case SYS_ISDBT:
+        {
+            struct dtv_property p[] = {
+                { .cmd = DTV_DELIVERY_SYSTEM, .u.data = delsys },
+                { .cmd = DTV_FREQUENCY, .u.data = freq },
+                { .cmd = DTV_ISDBT_LAYER_ENABLED, .u.data = 7 },
+                { .cmd = DTV_TUNE },
+            };
+            struct dtv_properties cmdseq = {
+                .num = sizeof(p) / sizeof(p[0]),
+                .props = p
+            };
+            if (dvbv5_tune(priv, fd_frontend, delsys, &cmdseq) != 0) {
+                goto error_tune;
+            }
+        }
+        break;
+    case SYS_ISDBS:
+        {
+            struct dtv_property p[] = {
+                { .cmd = DTV_DELIVERY_SYSTEM, .u.data = delsys },
+                { .cmd = DTV_VOLTAGE, .u.data = 1 },
+                { .cmd = DTV_FREQUENCY, .u.data = freq },
+                { .cmd = DTV_STREAM_ID, .u.data = stream_id },
                 { .cmd = DTV_TUNE },
             };
             struct dtv_properties cmdseq = {
