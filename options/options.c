@@ -524,6 +524,7 @@ static const m_option_t mp_opts[] = {
     {"subs-fallback", OPT_CHOICE(subs_fallback, {"no", 0}, {"default", 1}, {"yes", 2})},
     {"subs-fallback-forced", OPT_BOOL(subs_fallback_forced)},
     {"dmono", OPT_CHOICE(audio_dmono_ch, {"auto", -1}, {"main", 0}, {"sub", 1}, {"both", 2})},
+    {"progid", OPT_INT(progid), M_RANGE(0, UINT16_MAX)},
 
     {"lavfi-complex", OPT_STRING(lavfi_complex), .flags = UPDATE_LAVFI_COMPLEX},
 
@@ -1031,6 +1032,7 @@ static const struct MPOpts mp_default_opts = {
     .rebase_start_time = true,
     .keep_open_pause = true,
     .image_display_duration = 1.0,
+    .progid = -1,
     .stream_id = { { [STREAM_AUDIO] = -1,
                      [STREAM_VIDEO] = -1,
                      [STREAM_SUB] = -1, },
