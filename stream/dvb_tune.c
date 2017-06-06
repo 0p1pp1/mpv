@@ -636,6 +636,20 @@ static int tune_it(dvb_priv_t *priv, int fd_frontend, unsigned int delsys,
                    get_dvb_delsys(delsys), freq, modulation);
         break;
 #endif
+    case SYS_ISDBT:
+#ifndef DVB_USE_S2API
+        MP_ERR(priv, "ERROR: Can not tune to ISDB-T channel, "
+                     "S2-API not available!\n");
+#endif
+        MP_VERBOSE(priv, "tuning ISDBT to %d Hz\n", freq);
+        break;
+    case SYS_ISDBS:
+#ifndef DVB_USE_S2API
+        MP_ERR(priv, "ERROR: Can not tune to ISDB-S channel, "
+                     "S2-API not available!\n");
+#endif
+        MP_VERBOSE(priv, "tuning ISDBT to %d kHz [0x%04x]\n", freq, stream_id);
+        break;
     default:
         MP_VERBOSE(priv, "Unknown FE type. Aborting\n");
         return 0;
@@ -753,6 +767,41 @@ static int tune_it(dvb_priv_t *priv, int fd_frontend, unsigned int delsys,
         }
         break;
 #endif
+    case SYS_ISDBT:
+        {
+            struct dtv_property p[] = {
+                { .cmd = DTV_DELIVERY_SYSTEM, .u.data = delsys },
+                { .cmd = DTV_FREQUENCY, .u.data = freq },
+                { .cmd = DTV_ISDBT_LAYER_ENABLED, .u.data = 7 },
+                { .cmd = DTV_TUNE },
+            };
+            struct dtv_properties cmdseq = {
+                .num = sizeof(p) / sizeof(p[0]),
+                .props = p
+            };
+            if (dvbv5_tune(priv, fd_frontend, delsys, &cmdseq) != 0) {
+                goto old_api;
+            }
+        }
+        break;
+    case SYS_ISDBS:
+        {
+            struct dtv_property p[] = {
+                { .cmd = DTV_DELIVERY_SYSTEM, .u.data = delsys },
+                { .cmd = DTV_VOLTAGE, .u.data = 1 },
+                { .cmd = DTV_FREQUENCY, .u.data = freq },
+                { .cmd = DTV_STREAM_ID, .u.data = stream_id },
+                { .cmd = DTV_TUNE },
+            };
+            struct dtv_properties cmdseq = {
+                .num = sizeof(p) / sizeof(p[0]),
+                .props = p
+            };
+            if (dvbv5_tune(priv, fd_frontend, delsys, &cmdseq) != 0) {
+                goto old_api;
+            }
+        }
+        break;
     }
 
     int tune_status = check_status(priv, fd_frontend, timeout);

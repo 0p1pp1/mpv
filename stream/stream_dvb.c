@@ -42,6 +42,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <pthread.h>
+#include <ctype.h>
 
 #include <libavutil/avstring.h>
 
@@ -257,6 +258,57 @@ static bool parse_pid_string(struct mp_log *log, char *pid_string,
     return false;
 }
 
+/* very limited S2API props parser.
+ * Format:
+ * <proplist> := <prop_def> | {<prop_def> "|" <proplist>}
+ * <prop_def> := <prop_name>"="<prop_value>
+ * <prop_name> := "DTV_FREQUENCY" | "DTV_STREAM_ID" | "DTV_ISDBS_TS_ID"....
+ * <prop_value> := <number> | <delsys-name>
+ */
+static bool parse_s2api_props(char *txt, dvb_channel_t *ch, int type)
+{
+    char *saved;
+    char pname[256], val[256];
+
+    if (!txt)
+        return false;
+
+    txt = dvb_strtok_r(txt, "|", &saved);
+    for ( ; txt; txt = dvb_strtok_r(NULL, "|", &saved)) {
+        char *r;
+
+        if (sscanf(txt, "%255[^|=]=%255[^|=]", pname, val) != 2)
+            break;
+        if (pname[0] == '\0' || val[0] == '\0')
+            break;
+
+        if (!strcmp(pname, "DTV_FREQUENCY"))
+            ch->freq = strtoul(val, &r, 10);
+        else if (!strcmp(pname, "DTV_STREAM_ID")
+                   || !strcmp(pname, "DTV_ISDBS_TS_ID"))
+            ch->stream_id = strtoul(val, &r, 0);
+        else if (!strcmp(pname, "DTV_DELIVERY_SYSTEM")) {
+            ch->delsys = strtoul(val, &r, 10);
+            if (ch->delsys != 0)
+                continue;
+            if (!strcmp(val, "SYS_ISDBS") || !strcmp(val, "ISDBS"))
+                ch->delsys = SYS_ISDBS;
+            else if (!strcmp(val, "SYS_ISDBT") || !strcmp(val, "ISDBT"))
+                ch->delsys = SYS_ISDBT;
+            else
+                break;
+        }
+    }
+
+    if (txt || ch->freq == 0) {
+        ch->freq = 0;
+        return false;
+    }
+    ch->pids[0] = 8192;
+    ch->pids_cnt = 1;
+    return true;
+}
+
 static dvb_channels_list_t *dvb_get_channels(struct mp_log *log,
                                            dvb_channels_list_t *list_add,
                                            int cfg_full_transponder,
@@ -277,6 +329,7 @@ static dvb_channels_list_t *dvb_get_channels(struct mp_log *log,
     char tmp_lcr[256], tmp_hier[256], inv[256], bw[256], cr[256], mod[256],
          transm[256], gi[256], vpid_str[256], apid_str[256], tpid_str[256],
          vdr_par_str[256], vdr_loc_str[256];
+    char dtv_props[256];
     const char *cbl_conf =
         "%d:%255[^:]:%d:%255[^:]:%255[^:]:%255[^:]:%255[^:]\n";
     const char *sat_conf = "%d:%c:%d:%d:%255[^:]:%255[^:]\n";
@@ -287,6 +340,7 @@ static dvb_channels_list_t *dvb_get_channels(struct mp_log *log,
 #endif
     const char *vdr_conf =
         "%d:%255[^:]:%255[^:]:%d:%255[^:]:%255[^:]:%255[^:]:%*255[^:]:%d:%*d:%*d:%*d\n%n";
+    const char *s2api_conf = "%255[^:]:%i\n";
 
     mp_verbose(log, "CONFIG_READ FILE: %s, type: %s\n",
                filename, get_dvb_delsys(delsys));
@@ -486,6 +540,17 @@ static dvb_channels_list_t *dvb_get_channels(struct mp_log *log,
                            get_dvb_delsys(delsys),
                            list->NUM_CHANNELS, fields, ptr->name, ptr->freq,
                            ptr->srate, ptr->pol, ptr->diseqc);
+                break;
+            case SYS_ISDBS:
+            case SYS_ISDBT:
+                fields = sscanf(&line[k], s2api_conf, dtv_props, &ptr->progid);
+                ptr->service_id = ptr->progid;
+                parse_s2api_props(dtv_props, ptr, delsys);
+                mp_verbose(log, "%s, NUM: %d, NAME: %s, "
+                           "FREQ: %d, StreamID: %d, SID: %d",
+                           get_dvb_delsys(delsys),
+                           list->NUM_CHANNELS, ptr->name,
+                           ptr->freq, ptr->stream_id, ptr->service_id);
                 break;
             default:
                 break;
@@ -1276,6 +1341,12 @@ dvb_state_t *dvb_get_state(stream_t *stream)
                     /* PASSTOUTH */
                 case SYS_DVBS2:
                     conf_file_name = "channels.conf.sat";
+                    break;
+                case SYS_ISDBS:
+                    conf_file_name = "channels.conf.isdbs";
+                    break;
+                case SYS_ISDBT:
+                    conf_file_name = "channels.conf.isdbt";
                     break;
                 default:
                     continue;
