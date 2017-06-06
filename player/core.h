@@ -318,6 +318,8 @@ typedef struct MPContext {
     // Once finished switching, it is cleared to NULL again.
     struct track *next_track[STREAM_TYPE_COUNT];
 
+    int progid;
+
     struct mp_filter *filter_root;
 
     struct mp_filter *lavfi;
@@ -551,7 +553,7 @@ void reselect_demux_stream(struct MPContext *mpctx, struct track *track,
 void prepare_playlist(struct MPContext *mpctx, struct playlist *pl);
 void autoload_external_files(struct MPContext *mpctx, struct mp_cancel *cancel);
 struct track *select_default_track(struct MPContext *mpctx, int order,
-                                   enum stream_type type);
+                                   enum stream_type type, int suggested_dmx_id);
 void prefetch_next(struct MPContext *mpctx);
 void update_lavfi_complex(struct MPContext *mpctx);
 

@@ -362,6 +362,7 @@ static void recover_lost_streams(struct MPContext *mpctx)
     MP_VERBOSE(mpctx, "setup switching to prog:%d v:%#06x a:%#06x s:%#06x\n",
                prog.progid, prog.dmxid[STREAM_VIDEO],
                prog.dmxid[STREAM_AUDIO], prog.dmxid[STREAM_SUB]);
+    mpctx->progid = prog.progid;
 
     // Selects the new track.
     // should not using reselect_demux_stream()/demuxser_select_track() here,
@@ -662,11 +663,12 @@ static char **process_langs(char **in)
 }
 
 struct track *select_default_track(struct MPContext *mpctx, int order,
-                                   enum stream_type type)
+                                   enum stream_type type, int suggested_dmx_id)
 {
     struct MPOpts *opts = mpctx->opts;
     int tid = opts->stream_id[order][type];
-    int preferred_program = (type != STREAM_VIDEO && mpctx->current_track[0][STREAM_VIDEO]) ?
+    int preferred_program = (mpctx->progid > 0) ? mpctx->progid :
+                            (type != STREAM_VIDEO && mpctx->current_track[0][STREAM_VIDEO]) ?
                             mpctx->current_track[0][STREAM_VIDEO]->program_id : -1;
     if (tid == -2)
         return NULL;
@@ -697,6 +699,8 @@ struct track *select_default_track(struct MPContext *mpctx, int order,
             continue;
         if (duplicate_track(mpctx, order, type, track))
             continue;
+        if (pick && pick->demuxer_id >= 0 && pick->demuxer_id == suggested_dmx_id)
+            continue;
         if (sub) {
             // Subtitle specific auto-selecting crap.
             bool audio_matches = audio_lang && track->lang && !strcasecmp(audio_lang, track->lang);
@@ -713,9 +717,11 @@ struct track *select_default_track(struct MPContext *mpctx, int order,
                 pick = track;
                 pick->forced_select = forced;
             }
-        } else if (!pick || compare_track(track, pick, langs, os_langs, false, mpctx->opts, preferred_program)) {
-            pick = track;
         }
+        if (!pick ||
+            (track->demuxer_id >= 0 && track->demuxer_id == suggested_dmx_id) ||
+            compare_track(track, pick, langs, os_langs, false, mpctx->opts, preferred_program))
+            pick = track;
     }
 
     if (pick && pick->attached_picture && !mpctx->opts->audio_display)
@@ -1829,13 +1835,26 @@ static void play_current_file(struct MPContext *mpctx)
     if (reinit_complex_filters(mpctx, false) < 0)
         goto terminate_playback;
 
+    // If program_id is specified by user-option or by inupt stream (DVB),
+    // use it for selecting tracks.
+    demux_program_t prog;
+    prog.progid = (mpctx->opts->progid >= 0) ? mpctx->opts->progid : -1;
+    fill_demux_prog_arg(mpctx, &prog);
+    if (mpctx->demuxer->desc->identify_program) {
+        if (mpctx->demuxer->desc->identify_program(mpctx->demuxer, &prog))
+            MP_VERBOSE(mpctx, "selected prog_id:%d.\n", prog.progid);
+        else
+            MP_WARN(mpctx, "failed to detect/set program.\n");
+    }
+    mpctx->progid = prog.progid;
+
     for (int t = 0; t < STREAM_TYPE_COUNT; t++) {
         for (int i = 0; i < num_ptracks[t]; i++) {
             struct track *sel = NULL;
             bool taken = (t == STREAM_VIDEO && mpctx->vo_chain) ||
                          (t == STREAM_AUDIO && mpctx->ao_chain);
             if (!taken && opts->stream_auto_sel)
-                sel = select_default_track(mpctx, i, t);
+                sel = select_default_track(mpctx, i, t, prog.dmxid[t]);
             mpctx->current_track[i][t] = sel;
             mp_select_dmono_sub_ch(mpctx, sel);
         }
