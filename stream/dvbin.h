@@ -132,6 +132,8 @@ typedef struct {
         DELSYS_BIT(SYS_DVBT) |                                          \
         DELSYS_BIT(SYS_DVBS) |                                          \
         DELSYS_BIT(SYS_DVBS2) |                                         \
+        DELSYS_BIT(SYS_ISDBT) |                                         \
+        DELSYS_BIT(SYS_ISDBS) |                                         \
         DELSYS_BIT(SYS_ATSC) |                                          \
         DELSYS_BIT(SYS_DVBC_ANNEX_B) |                                  \
         DELSYS_BIT(SYS_DVBT2) |                                         \
