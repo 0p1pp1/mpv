@@ -378,6 +378,7 @@ const m_option_t mp_opts[] = {
                 {"main", 0},
                 {"sub", 1},
                 {"both", 2})),
+    OPT_INTRANGE("progid", progid, 0, 0, 0xffff),
 
     OPT_STRING("lavfi-complex", lavfi_complex, 0),
 
@@ -919,6 +920,7 @@ const struct MPOpts mp_default_opts = {
     .keep_open = 0,
     .keep_open_pause = 1,
     .image_display_duration = 1.0,
+    .progid = -1,
     .stream_id = { { [STREAM_AUDIO] = -1,
                      [STREAM_VIDEO] = -1,
                      [STREAM_SUB] = -1, },
