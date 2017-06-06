@@ -2551,6 +2551,7 @@ static int mp_property_program(void *ctx, struct m_property *prop,
             return M_PROPERTY_ERROR;
         }
         MP_INFO(mpctx, "selected program:%d.\n", prog.progid);
+        mpctx->progid = prog.progid;
         mp_switch_track(mpctx, STREAM_VIDEO,
                 find_track_by_demuxer_id(mpctx, STREAM_VIDEO, prog.vid), 0);
 
@@ -2571,6 +2572,9 @@ static int mp_property_program(void *ctx, struct m_property *prop,
             .min = -1,
             .max = (1 << 16) - 1,
         };
+        return M_PROPERTY_OK;
+    case M_PROPERTY_PRINT:
+        *(char **)arg = talloc_asprintf(NULL, "%d", mpctx->progid);
         return M_PROPERTY_OK;
     }
     return M_PROPERTY_NOT_IMPLEMENTED;
