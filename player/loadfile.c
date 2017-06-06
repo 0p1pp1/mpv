@@ -1653,7 +1653,13 @@ static void play_current_file(struct MPContext *mpctx)
     // If program_id is specified by user-option or by inupt stream (DVB),
     // use it for selecting tracks.
     demux_program_t prog;
-    prog.progid = (mpctx->opts->progid >= 0) ? mpctx->opts->progid : -1;
+    prog.progid = -1;
+    if (mpctx->opts->progid >= 0)
+        prog.progid = mpctx->opts->progid;
+    else if (mpctx->demuxer->stream)
+        stream_control(mpctx->demuxer->stream, STREAM_CTRL_DVB_GET_SID,
+                       &prog.progid);
+
     fill_demux_prog_arg(mpctx, &prog);
     if (mpctx->demuxer->desc->identify_program) {
         if (mpctx->demuxer->desc->identify_program(mpctx->demuxer, &prog))
