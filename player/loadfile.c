@@ -1179,6 +1179,37 @@ void mp_select_dmono_sub_ch(struct MPContext *mpctx, struct track *track)
                : sh->dmono_mode == DMONO_SUB ? "sub" : "both");
 }
 
+static void setup_prog(struct MPContext *mpctx)
+{
+    int r;
+    unsigned int progid;
+    demux_program_t prog;
+
+    mpctx->progid = -1;
+
+    if (mpctx->opts->progid >= 0)
+        progid = mpctx->opts->progid;
+    prog.progid = progid;
+    prog.vlangs = mpctx->opts->stream_lang[STREAM_VIDEO];
+    prog.alangs = mpctx->opts->stream_lang[STREAM_AUDIO];
+    prog.slangs = mpctx->opts->stream_lang[STREAM_SUB];
+    r = demux_control(mpctx->demuxer, DEMUXER_CTRL_IDENTIFY_PROGRAM, &prog);
+    if (r != CONTROL_OK) {
+        MP_WARN(mpctx, "failed to set program_id:%d.\n", prog.progid);
+        return;
+    }
+
+    mpctx->progid = prog.progid;
+    if (mpctx->opts->stream_id[0][STREAM_VIDEO] == -1)
+        mpctx->opts->stream_id[0][STREAM_VIDEO] = prog.vid;
+    if (mpctx->opts->stream_id[0][STREAM_AUDIO] == -1)
+        mpctx->opts->stream_id[0][STREAM_AUDIO] = prog.aid;
+    if (mpctx->opts->stream_id[0][STREAM_SUB] == -1)
+        mpctx->opts->stream_id[0][STREAM_SUB] = prog.sid;
+    MP_VERBOSE(mpctx, "selected prog_id:%d.\n", prog.progid);
+    return;
+}
+
 // Start playing the current playlist entry.
 // Handle initialization and deinitialization.
 static void play_current_file(struct MPContext *mpctx)
@@ -1303,6 +1334,10 @@ reopen_file:
 
     if (!init_complex_filters(mpctx))
         goto terminate_playback;
+
+    // If program_id is specified by user-option or by inupt stream (DVB),
+    // use it for selecting tracks.
+    setup_prog(mpctx);
 
     assert(NUM_PTRACKS == 2); // opts->stream_id is hardcoded to 2
     for (int t = 0; t < STREAM_TYPE_COUNT; t++) {

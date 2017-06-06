@@ -311,6 +311,8 @@ typedef struct MPContext {
     // Once finished switching, it is cleared to NULL again.
     struct track *next_track[STREAM_TYPE_COUNT];
 
+    int progid;
+
     struct lavfi *lavfi;
 
     struct ao *ao;
