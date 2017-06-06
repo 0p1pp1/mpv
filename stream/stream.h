@@ -53,6 +53,8 @@ enum stream_ctrl {
     STREAM_CTRL_HAS_AVSEEK,
     STREAM_CTRL_GET_METADATA,
 
+    STREAM_CTRL_DVB_GET_SID,
+
     // Optical discs (internal interface between streams and demux_disc)
     STREAM_CTRL_GET_TIME_LENGTH,
     STREAM_CTRL_GET_DVD_INFO,
