@@ -113,6 +113,11 @@ char *lavc_conv_get_extradata(struct lavc_conv *priv)
     return priv->extradata;
 }
 
+int lavc_conv_setopt_int(struct lavc_conv *priv, const char *name, int val)
+{
+    return av_opt_set_int(priv->avctx, name, val, AV_OPT_SEARCH_CHILDREN);
+}
+
 #if HAVE_AV_WEBVTT
 
 // FFmpeg WebVTT packets are pre-parsed in some way. The FFmpeg Matroska
