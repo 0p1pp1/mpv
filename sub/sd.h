@@ -53,6 +53,7 @@ char **lavc_conv_decode(struct lavc_conv *priv, struct demux_packet *packet,
                         double *sub_pts, double *sub_duration);
 void lavc_conv_reset(struct lavc_conv *priv);
 void lavc_conv_uninit(struct lavc_conv *priv);
+int lavc_conv_setopt_int(struct lavc_conv *priv, const char *name, int val);
 
 struct sd_filter {
     struct mpv_global *global;
