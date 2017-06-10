@@ -2091,7 +2091,8 @@ static int property_switch_track(struct m_property *prop, int action, void *arg,
                 default:
                     sub_ch = "main";
                 }
-            }
+            } else if (mp_track_is_ml_sub(track) && track->stream->sub_lang_tag == 1)
+                lang = track->stream->lang_sub;
             if (!lang)
                 lang = "unknown";
 
@@ -2128,6 +2129,18 @@ static int property_switch_track(struct m_property *prop, int action, void *arg,
                     }
                     // reset and move to the next track.
                     sh->dmono_mode = DMONO_MAIN;
+                } else if (mp_track_is_ml_sub(track)) {
+                    struct sh_stream *sh = track->stream;
+
+                    if (sh->sub_lang_tag == 0 && sarg->inc >= 0) {
+                        sh->sub_lang_tag = 1;
+                        sub_control(track->d_sub, SD_CTRL_SET_LANG_TAG, &sh->sub_lang_tag);
+                        break;
+                    } else if (sh->sub_lang_tag != 0 && sarg->inc < 0) {
+                        sh->sub_lang_tag = 0;
+                        sub_control(track->d_sub, SD_CTRL_SET_LANG_TAG, &sh->sub_lang_tag);
+                        break;
+                    }
                 }
                 track = track_next(mpctx, type, sarg, track);
                 MP_DBG(mpctx, "trying a switch to track:%d\n",
@@ -2136,6 +2149,11 @@ static int property_switch_track(struct m_property *prop, int action, void *arg,
                     track->stream->dmono_mode = sarg->inc >= 0 ?
                                                         DMONO_MAIN : DMONO_SUB;
                 mp_switch_track_n(mpctx, order, type, track, 0);
+                if (mp_track_is_ml_sub(track)) {
+                    track->stream->sub_lang_tag = sarg->inc >= 0 ? 0 : 1;
+                    sub_control(track->d_sub, SD_CTRL_SET_LANG_TAG,
+                                &track->stream->sub_lang_tag);
+                }
             } while (mpctx->current_track[order][type] != track);
             print_track_list(mpctx, "Track switched:");
         } else {
@@ -2151,6 +2169,7 @@ static int property_switch_track(struct m_property *prop, int action, void *arg,
             track = mp_track_by_tid(mpctx, type, *(int *)arg);
             mp_switch_track_n(mpctx, order, type, track, FLAG_MARK_SELECTION);
             mp_select_dmono_sub_ch(mpctx, track);
+            mp_select_sub_lang(mpctx, track);
             print_track_list(mpctx, "Track switched:");
             mp_wakeup_core(mpctx);
         } else {
@@ -2349,8 +2368,10 @@ static int mp_property_program(void *ctx, struct m_property *prop,
         mp_switch_track(mpctx, STREAM_AUDIO, t, 0);
         mp_select_dmono_sub_ch(mpctx, t);
 
-        mp_switch_track(mpctx, STREAM_SUB,
-            mp_track_by_dmxid(mpctx, STREAM_SUB, prog.dmxid[STREAM_SUB]), 0);
+        t = mp_track_by_dmxid(mpctx, STREAM_SUB, prog.dmxid[STREAM_SUB]);
+        mp_switch_track(mpctx, STREAM_SUB, t, 0);
+        mp_select_sub_lang(mpctx, t);
+
         print_track_list(mpctx, "Program switched:");
         reset_playback_state(mpctx);
         return M_PROPERTY_OK;
