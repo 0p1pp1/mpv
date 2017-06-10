@@ -58,6 +58,8 @@ struct sh_stream {
     } dmono_mode;               // currently selected channel
     char *lang_sub;             // language used in right (sub) channel
 
+    int sub_lang_tag;           // for subtitle. selected lang-subtrack
+
     struct mp_tags *tags;
 
     bool missing_timestamps;

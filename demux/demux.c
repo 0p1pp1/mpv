@@ -782,6 +782,7 @@ static void add_missing_streams(struct demux_internal *in,
 struct sh_stream *demux_alloc_sh_stream(enum stream_type type)
 {
     struct sh_stream *sh = talloc_ptrtype(NULL, sh);
+    memset(sh, 0, sizeof(*sh));
     *sh = (struct sh_stream) {
         .type = type,
         .index = -1,
