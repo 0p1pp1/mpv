@@ -695,6 +695,16 @@ static int control(struct sd *sd, enum sd_ctrl cmd, void *arg)
     case SD_CTRL_UPDATE_SPEED:
         update_subtitle_speed(sd);
         return CONTROL_OK;
+    case SD_CTRL_SET_LANG_TAG: {
+        int tag = *(int *)arg;
+
+        if (!ctx->converter)
+            return CONTROL_NA;
+        if (tag < 0 || tag > 1)
+            return CONTROL_FALSE;
+        lavc_conv_setopt_int(ctx->converter, "lang_tag", tag);
+        return CONTROL_OK;
+    }
     default:
         return CONTROL_UNKNOWN;
     }
