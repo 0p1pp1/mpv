@@ -179,7 +179,8 @@ static int init(struct sd *sd)
         extradata = lavc_conv_get_extradata(ctx->converter);
         extradata_size = extradata ? strlen(extradata) : 0;
 
-        if (strcmp(sd->codec->codec, "eia_608") == 0)
+        if (strcmp(sd->codec->codec, "eia_608") == 0
+            || strcmp(sd->codec->codec, "isdbsub") == 0)
             ctx->duration_unknown = 1;
     }
 
@@ -270,7 +271,7 @@ static void decode(struct sd *sd, struct demux_packet *packet)
         }
         if (ctx->duration_unknown) {
             for (int n = 0; n < track->n_events - 1; n++) {
-                if (track->events[n].Duration == UNKNOWN_DURATION * 1000) {
+                if (track->events[n].Duration / 1000 == UNKNOWN_DURATION) {
                     track->events[n].Duration = track->events[n + 1].Start -
                                                 track->events[n].Start;
                 }
@@ -312,6 +313,8 @@ static void configure_ass(struct sd *sd, struct mp_osd_res *dim,
     bool set_scale_with_window = false;
     bool set_scale_by_window = true;
     bool total_override = false;
+
+    converted &= !!strcmp(sd->codec->codec, "isdbsub");
     // With forced overrides, apply the --sub-* specific options
     if (converted || opts->ass_style_override == 3) {
         set_scale_with_window = opts->sub_scale_with_window;
