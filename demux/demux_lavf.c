@@ -1392,8 +1392,17 @@ redo:
             prog->vid = v_sh->demuxer_id;
         if (a_sh)
             prog->aid = a_sh->demuxer_id;
-        if (s_sh)
-            prog->sid = s_sh->demuxer_id;
+        if (s_sh && s_sh->lang && prog->slangs) {
+            int n;
+            for (n = 0; prog->slangs[n]; n++) {
+                if (!strcmp(prog->slangs[n], s_sh->lang))
+                    break;
+                if (s_sh->lang_sub && !strcmp(prog->slangs[n], s_sh->lang_sub))
+                    break;
+            }
+            if (prog->slangs[n])
+                prog->sid = s_sh->demuxer_id;
+        }
 
         mp_tags_copy_from_av_dictionary(demuxer->metadata, priv->avfc->programs[p]->metadata);
         update_metadata(demuxer, NULL);
