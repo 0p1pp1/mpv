@@ -489,7 +489,9 @@ struct track *select_default_track(struct MPContext *mpctx, int order,
             pick = track;
     }
     if (pick && !select_fallback && !(pick->is_external && !pick->no_default)
-        && !match_lang(langs, pick->lang) && !pick->default_track
+        && !match_lang(langs, pick->lang)
+        && !(pick->stream && pick->stream->lang_sub
+             && match_lang(langs, pick->stream->lang_sub))
         && !pick->forced_track)
         pick = NULL;
     if (pick && pick->attached_picture && !mpctx->opts->audio_display)
@@ -1250,7 +1252,7 @@ static void setup_prog(struct MPContext *mpctx)
         mpctx->opts->stream_id[0][STREAM_VIDEO] = prog.vid;
     if (mpctx->opts->stream_id[0][STREAM_AUDIO] == -1)
         mpctx->opts->stream_id[0][STREAM_AUDIO] = prog.aid;
-    if (mpctx->opts->stream_id[0][STREAM_SUB] == -1)
+    if (mpctx->opts->stream_id[0][STREAM_SUB] == -1 && prog.sid >= 0)
         mpctx->opts->stream_id[0][STREAM_SUB] = prog.sid;
     MP_VERBOSE(mpctx, "selected prog_id:%d.\n", prog.progid);
     return;
