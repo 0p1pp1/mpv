@@ -1688,8 +1688,18 @@ redo:
         prog->dmxid[STREAM_VIDEO] = v_sh->demuxer_id;
     if (a_sh)
         prog->dmxid[STREAM_AUDIO] = a_sh->demuxer_id;
-    if (s_sh)
-        prog->dmxid[STREAM_SUB] = s_sh->demuxer_id;
+    if (s_sh && s_sh->lang && prog->langs[STREAM_SUB]) {
+        char **slangs = prog->langs[STREAM_SUB];
+        int n;
+        for (n = 0; slangs[n]; n++) {
+            if (!strcmp(slangs[n], s_sh->lang))
+                break;
+            if (s_sh->lang_sub && !strcmp(slangs[n], s_sh->lang_sub))
+                break;
+        }
+        if (slangs[n])
+            prog->dmxid[STREAM_SUB] = s_sh->demuxer_id;
+    }
 
     priv->new_prog_set = true;
     return true;
