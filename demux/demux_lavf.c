@@ -1521,7 +1521,15 @@ demux_lavf_find_next_track(demuxer_t *demuxer, demux_next_track_t *arg)
                 priv->streams[i]->sh != src_sh)
                 continue;
 
-            if (arg->inc >= 0)
+            if (!arg->wrap) {
+                if (arg->inc >= 0) {
+                    j = i + 1;
+                    i = priv->num_streams;
+                } else {
+                    j = i - 1;
+                    i = -1;
+                }
+            } else if (arg->inc >= 0)
                 j = (i + 1) % priv->num_streams;
             else
                 j = i == 0 ? priv->num_streams - 1 : i - 1;
@@ -1529,7 +1537,9 @@ demux_lavf_find_next_track(demuxer_t *demuxer, demux_next_track_t *arg)
                 if (priv->streams[j] && priv->streams[j]->sh &&
                     priv->streams[j]->sh->type == src_sh->type)
                     break;
-                if (arg->inc >= 0)
+                if (!arg->wrap)
+                    j = arg->inc >= 0 ? j + 1 : j - 1;
+                else if (arg->inc >= 0)
                     j = (j + 1) % priv->num_streams;
                 else
                     j = j == 0 ? priv->num_streams - 1 : j - 1;
@@ -1556,7 +1566,15 @@ demux_lavf_find_next_track(demuxer_t *demuxer, demux_next_track_t *arg)
             continue;
 
         // then, search through again for the prev/next stream.
-        if (arg->inc >= 0)
+        if (!arg->wrap) {
+            if (arg->inc >= 0) {
+                j = i + 1;
+                i = prog->nb_stream_indexes;
+            } else {
+                j = i - 1;
+                i = -1;
+            }
+        } else if (arg->inc >= 0)
             j = (i + 1) % prog->nb_stream_indexes;
         else
             j = i == 0 ? prog->nb_stream_indexes - 1 : i - 1;
@@ -1571,7 +1589,9 @@ demux_lavf_find_next_track(demuxer_t *demuxer, demux_next_track_t *arg)
             if (sh2 && sh2->type == sh->type)
                 break;
 
-            if (arg->inc >= 0)
+            if (!arg->wrap)
+                j = arg->inc >= 0 ? j + 1 : j - 1;
+            else if (arg->inc >= 0)
                 j = (j + 1) % prog->nb_stream_indexes;
             else
                 j = j == 0 ? prog->nb_stream_indexes - 1 : j - 1;
