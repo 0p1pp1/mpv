@@ -1283,8 +1283,10 @@ static bool is_better_sh(struct sh_stream *s1, struct sh_stream *s2, char **lang
         int n1, n2;
 
         n1 = n2 = 0;
-        while ( langs[n1] && (!s1->lang || strcmp(langs[n1], s1->lang)) ) n1++;
-        while ( langs[n2] && (!s2->lang || strcmp(langs[n2], s2->lang)) ) n2++;
+        while ( langs[n1] && (!s1->lang || strcmp(langs[n1], s1->lang))
+                && (!s1->lang_sub || strcmp(langs[n1], s1->lang_sub)) ) n1++;
+        while ( langs[n2] && (!s2->lang || strcmp(langs[n2], s2->lang))
+                && (!s2->lang_sub || strcmp(langs[n2], s2->lang_sub)) ) n2++;
         if (n1 != n2)
             return n1 < n2;
     }
