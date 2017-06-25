@@ -493,7 +493,9 @@ struct track *select_default_track(struct MPContext *mpctx, int order,
             pick = track;
     }
     if (pick && !select_fallback && !(pick->is_external && !pick->no_default)
-        && !match_lang(langs, pick->lang) && !pick->default_track
+        && !match_lang(langs, pick->lang)
+        && !(pick->stream && pick->stream->lang_sub
+             && match_lang(langs, pick->stream->lang_sub))
         && !pick->forced_track)
         pick = NULL;
     if (pick && pick->attached_picture && !mpctx->opts->audio_display)
@@ -1335,7 +1337,7 @@ static void setup_prog(struct MPContext *mpctx)
         if (t)
             mpctx->opts->stream_id[0][STREAM_AUDIO] = t->user_tid;
     }
-    if (mpctx->opts->stream_id[0][STREAM_SUB] == -1) {
+    if (mpctx->opts->stream_id[0][STREAM_SUB] == -1 && prog.sid >=0) {
         struct track *t = track_by_dmxid(mpctx, STREAM_SUB, prog.sid);
         if (t)
             mpctx->opts->stream_id[0][STREAM_SUB] = t->user_tid;
