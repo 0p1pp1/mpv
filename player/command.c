@@ -2201,7 +2201,8 @@ static struct track* track_next(struct MPContext *mpctx, enum stream_type type,
         }
     }
 
-    if (sarg->wrap) {
+    /* Selection of subtitle tracks is cycled with NULL(none). */
+    if (sarg->wrap && type != STREAM_SUB) {
         if (!next)
             next = first;
         if (!prev)
