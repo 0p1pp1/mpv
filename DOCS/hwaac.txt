@@ -1,0 +1,7 @@
+How to output AAC pass through:
+
+```
+mpv --audio-spdif=aac --audio-device pulse/alsa_output.pci-0000_00_1b.0.iec958-stereo ....
+```
+may work.
+see `mpv --audio-device=help` and search `iec958` for other options.
