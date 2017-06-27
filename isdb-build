@@ -1,0 +1,62 @@
+#!/bin/bash
+set -e
+export LC_ALL=C
+
+
+# (clone and) update libass
+if ! test -d libass ; then
+	git clone --depth 1 -b isdb-0.14.0 https://github.com/0p1pp1/libass.git
+fi
+( cd libass; git pull --depth 1 )
+
+
+# (clone and) update ffmpeg
+if ! test -d ffmpeg ; then
+	git clone --depth 1 -b isdb-4.0 https://github.com/0p1pp1/ffmpeg.git
+fi
+( cd ffmpeg; git pull --depth 1 )
+
+
+
+if [ -x "bootstrap.py" ]; then
+	./bootstrap.py
+fi
+
+
+# cleaning up garbage of the previous build
+rm -rf libass/build
+rm -rf ffmpeg/build
+rm -rf build build_libs
+
+
+# configure & build
+BUILD="$(pwd)"
+
+# libass
+cd "$BUILD/libass"
+./autogen.sh
+mkdir -p build
+cd build
+../configure --prefix="$BUILD/build_libs" --enable-static --disable-shared --with-pic
+make install
+
+# ffmpeg
+FFMPEG_OPTIONS="--enable-libdemulti2 --enable-gnutls --enable-libopus"
+mkdir -p "$BUILD/ffmpeg/build"
+cd "$BUILD/ffmpeg/build"
+../configure --prefix="$BUILD/build_libs" --enable-static --disable-shared --disable-doc --disable-debug --disable-programs --enable-pic --enable-gpl $FFMPEG_OPTIONS
+make install
+
+# mpv
+export PKG_CONFIG_PATH="$BUILD/build_libs/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+
+# force static linking of libass, libav*
+for pc in "$BUILD"/build_libs/lib/pkgconfig/*.pc
+do
+  lib=$(basename -s .pc "$pc")
+  lib=${lib#lib}
+  sed -i "/^Lib:/s/\b-l${lib}\b/-l:lib${lib}.a/" "$pc"
+done
+cd "$BUILD"
+./waf configure --enable-dvbin
+./waf build
