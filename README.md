@@ -1,3 +1,129 @@
+ISDB向けmpv
+==========
+
+## 追加・変更された機能
+
+* デスクランブルしながらの再生
+* DVBデバイスからの再生
+  + ISDB-S/T用のチャンネル設定パラメータに対応
+* 字幕の表示
+  + "文字スーパー"他一部機能は未実装
+  + 多少の位置ずれあり
+  + 縦書き、複数音声対応(未テスト)
+* デュアルモノ音声対応
+  + 主音声のデフォルト再生
+  + 言語指定による自動選択
+  + ユーザによる選択・切り替え
+* TSストリーム内での番組切り替わり(次番組開始)対応
+  + 番組の切り替わり時点で終了していたのを再生継続するように
+* 複数プログラム、複数トラック(映像・音声・字幕)が存在する際のトラック選択の改良
+  + 番組(SID)の指定オプション
+  + デフォルトフラグ、言語、所属プログラムを考慮したトラック自動選択
+
+なお本修正はLinuxにのみ対応する。
+
+## 追加で必要となる依存ライブラリ
+
+* [ISDB向けffmpeg](https://github.com/0p1pp1/ffmpeg) (必須)
+* [ISDB向けlibass](https://github.com/0p1pp1/libass):
+  + 字幕表示機能を使いたい場合に必要
+* BCAS復号化ライブラリ:
+  + デスクランブルしていないTSファイルの再生や、DVBデバイスからの再生をしたい場合に必要
+  + libdemulti2: ベースのTSパケット復号ライブラリ +  
+    そこから呼び出すECM復号化ライブラリ(いずれか一つ)
+    - libpcsclite: PC/SCでBCASカードを使用する場合
+    - libsobacas: ソフトウェアでのカードシミュレーション。 libpcsclite互換I/F
+    - libyakisoba: ソフトウェアECM復号機能のみのライブラリ
+  + libpcsclite以外の入手はt●r板のDTV関連@T●r/1-100やFNの_jp_2ch_dtvを探すか、
+    ヘッダファイルを元に自作;)
+* iconvモジュール[gconv-module-aribb25](https://github.com/0p1pp1/gconv-module-aribb25):
+  + TS内のメタ情報を文字化けなく利用したい場合に必要  
+    (現状ではチャンネル名がウインドウタイトルに表示されるのみ)
+
+## ビルド方法
+
+0. 外部依存ライブラリのインストール
+    * BCAS復号化ライブラリ: libdemulti2 + {libpcsclite|libsobacas|libyakisoba}
+        + ディストリ・パッケージ(libpcsclite)からか、自前でダウンロード・インストール
+        + システムの標準パス(/usr/local/...)や`/etc/ld.so.conf[.d]`に指定されたパスにインストールするか、
+          LD_LIBRARY_PATHにインストールパスを指定しておくこと
+        + libsobacas/libyakisobaの場合は_bcas_keysも用意
+    * iconvモジュール: gconv-module-aribb25
+        + README.mdに従ってビルド・インストール(環境変数GCONV_PATHを設定しておくこと)
+
+1. mpv と libass,ffmpegのビルド
+
+    a). 自動(推奨)
+```
+./isdb-build
+```
+    (libassとffmpegをgithubからcloneしてconfigure、ビルドしmpvと**スタティック**リンクする。)
+
+    b). 手動
+    * libass,ffmpegのインストール 
+```
+./configure --prefix=/foo/mpv/build_libs [--enable-static [--disable-shared]] ...; make install
+```
+    * mpvをconfigure,ビルド
+```
+./bootstrap.py
+export PKG_CONFIG_PATH=/foo/mpv/build_libs/lib/pkgconfig
+./waf configure
+./waf build
+```
+    * libass,ffmpegをシステム標準以外のパスにインストールした場合PKG_CONFIG_PATHの設定が必要
+    * libass,ffmpegをstaticでリンクしたい場合、
+    同じディレクトリ(上記の例だと`/foo/mpv/build_libs/lib`)か
+    システム標準のパス(`/usr/lib`等)に同名の*.soが存在すると、
+    そちらが優先してリンクされてしまうので注意。(./isdb-buildを参照)
+
+## インストール・実行
+
+`./waf install`で`/usr/local/bin`にインストールしてmpvで実行するか、  
+インストールせずに直接`./build/mpv ...`で実行する。
+
+libass,ffmpegをシステム標準のパス以外にインストールし、
+mpvにdynamicリンクした場合は`/etc/ld.so.conf[.d]`かLD_LIBRARY_PATHの設定が必要となる。
+libdemulti2他のライブラリについても同様。
+
+TSのメタ情報を利用したい場合はGCONV_PATHの設定も必要。
+
+
+### ISDB独自機能関連のUI
+- コマンドラインでのDVBチャンネル指定: `mpv dvb://[カード番号@]チャンネル名`
+    * チャンネル設定ファイル`$XDG_CONFIG_HOME/mpv/channels.conf`が必要。
+        + [ISDB向けmplayer](https://github.com/0p1pp1/mplayer)と同じ1行1チャンネルの形式
+        + 地デジ向けはchannels.conf.isdbt, 衛星向けはchannels.conf.isdbsに分けて指定も可能
+        + 上記デフォルト名以外のチャンネル設定ファイルは`--dvbin-file=`オプションで指定可
+        + [dvbアプリ集](https://github.com/0p1pp1/dvb_apps)の`s2scan`コマンドで自動生成可能
+    * `dvb//1@NHK?frontend=1&demux=1&dvr=1`のようなオプション指定も一応可能
+    * デフォルトの設定だと再生開始まで時間がかかるので、
+      `--demuxer-lavf-probesize=10000`のようにオプションを指定するか、
+      `$XDG_CONFIG_HOME/mpv/mpv.conf`にDVBの自動プロファイルとして指定すると良い。
+```
+[protocol.dvb]
+profile-desc="profile for dvb:// streams"
+demuxer-lavf-probesize=10000
+```
+- DVBチャンネルのサイクル切り替え: 'H'/'K'キー (`cycle dvb-channel-name`コマンド)
+- 字幕のオン・オフ/切り替え: 'j'キー(`cycle sub`コマンド)
+    * 複数言語字幕の場合も'j'キーでオフ->日本語字幕->英語字幕->オフのように切り替わる（はず）
+- `--slang=jpn`コマンドラインオプションで、日本語字幕が有る時は自動的に表示
+- デュアルモノラル音声の場合の主・副・両方の指定/切り替え：
+    * `--dmono={auto|main|sub|both}`コマンドラインオプションで指定
+    * `dmono-mode`プロパティへの設定で切り替え。`input.conf`に`A cycle dmono-mode`等
+    * 一般の音声切り替えコマンド(`cycle audio`,'#'キー)でも主->副->次の音声トラックに切り替え
+- 再生するプログラムIDの明示指定:
+    * `--progid=<SID>`コマンドラインオプション
+    * `program`プロパティへの設定。(従来と同じ。 `input.conf`等で設定・切り替え)
+
+キーバインディング/利用可能コマンドについては`etc/input.conf`やmpv(1)を参照。
+`$XDG_CONFIG_HOME/mpv/input.conf`でカスタマイズできる。
+
+以下、オリジナルのREADME.md
+
+----
+
 ![http://mpv.io/](https://raw.githubusercontent.com/mpv-player/mpv.io/master/source/images/mpv-logo-128.png)
 
 ## mpv
