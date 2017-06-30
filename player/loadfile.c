@@ -1248,12 +1248,21 @@ static void setup_prog(struct MPContext *mpctx)
     }
 
     mpctx->progid = prog.progid;
-    if (mpctx->opts->stream_id[0][STREAM_VIDEO] == -1)
-        mpctx->opts->stream_id[0][STREAM_VIDEO] = prog.vid;
-    if (mpctx->opts->stream_id[0][STREAM_AUDIO] == -1)
-        mpctx->opts->stream_id[0][STREAM_AUDIO] = prog.aid;
-    if (mpctx->opts->stream_id[0][STREAM_SUB] == -1 && prog.sid >= 0)
-        mpctx->opts->stream_id[0][STREAM_SUB] = prog.sid;
+    if (mpctx->opts->stream_id[0][STREAM_VIDEO] == -1) {
+        struct track *t = track_by_dmxid(mpctx, STREAM_VIDEO, prog.vid);
+        if (t)
+            mpctx->opts->stream_id[0][STREAM_VIDEO] = t->user_tid;
+    }
+    if (mpctx->opts->stream_id[0][STREAM_AUDIO] == -1) {
+        struct track *t = track_by_dmxid(mpctx, STREAM_AUDIO, prog.aid);
+        if (t)
+            mpctx->opts->stream_id[0][STREAM_AUDIO] = t->user_tid;
+    }
+    if (mpctx->opts->stream_id[0][STREAM_SUB] == -1) {
+        struct track *t = track_by_dmxid(mpctx, STREAM_SUB, prog.sid);
+        if (t)
+            mpctx->opts->stream_id[0][STREAM_SUB] = t->user_tid;
+    }
     MP_VERBOSE(mpctx, "selected prog_id:%d.\n", prog.progid);
     return;
 }
