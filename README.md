@@ -98,12 +98,15 @@ TSのメタ情報を利用したい場合はGCONV_PATHの設定も必要。
         + [dvbアプリ集](https://github.com/0p1pp1/dvb_apps)の`s2scan`コマンドで自動生成可能
     * `dvb//1@NHK?frontend=1&demux=1&dvr=1`のようなオプション指定も一応可能
     * デフォルトの設定だと再生開始まで時間がかかるので、
-      `--demuxer-lavf-probesize=20000`のようにオプションを指定するか、
+      `--demuxer-lavf-probesize=2000000`のようにオプションを指定するか、
       `$XDG_CONFIG_HOME/mpv/mpv.conf`にDVBの自動プロファイルとして指定すると良い。
 ```
+hwdec=auto
+
 [protocol.dvb]
 profile-desc="profile for dvb:// streams"
-demuxer-lavf-probesize=20000
+demuxer-lavf-probesize=2000000
+demuxer-lavf-analyzeduration=1.3
 ```
 - DVBチャンネルのサイクル切り替え: 'H'/'K'キー (`cycle dvb-channel-name`コマンド)
 - 字幕のオン・オフ/切り替え: 'j'キー(`cycle sub`コマンド)
