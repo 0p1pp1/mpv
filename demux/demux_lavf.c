@@ -770,7 +770,6 @@ static void update_stream_props(struct sh_stream *sh, struct mp_tags *tags)
     v = tags ? mp_tags_get_str(tags, "isdmono") : NULL;
     dmono = v && v[0] != '0';
     sh->is_dmono = dmono;
-    sh->dmono_mode = DMONO_MAIN;
 
     lang2 = tags ? mp_tags_get_str(tags, "language2") : NULL;
     if (!lang2 != !sh->lang_sub || (lang2 && strncmp(lang2, sh->lang_sub, 3))) {
