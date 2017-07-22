@@ -58,5 +58,5 @@ do
   sed -i "s/-l${lib}/-Wl,--push-state,-Bstatic -l${lib} -Wl,--pop-state/" "$pc" 
 done
 cd "$BUILD"
-./waf configure
+./waf configure --enable-dvbin
 ./waf build
