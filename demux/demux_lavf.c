@@ -1039,7 +1039,7 @@ static int demux_lavf_fill_buffer(demuxer_t *demux)
     int r = av_read_frame(priv->avfc, pkt);
     if (r < 0) {
         av_packet_unref(pkt);
-        if (r == AVERROR(EAGAIN))
+        if (r == AVERROR(EAGAIN) || r == AVERROR_INVALIDDATA)
             return 1;
         if (r == AVERROR_EOF)
             return 0;
