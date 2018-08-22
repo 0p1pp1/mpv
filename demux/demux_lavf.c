@@ -1227,7 +1227,7 @@ static bool demux_lavf_read_packet(struct demuxer *demux,
     update_read_stats(demux);
     if (r < 0) {
         av_packet_unref(pkt);
-        if (r == AVERROR(EAGAIN))
+        if (r == AVERROR(EAGAIN) || r == AVERROR_INVALIDDATA)
             return true;
         if (r == AVERROR_EOF)
             return false;
