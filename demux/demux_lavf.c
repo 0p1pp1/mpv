@@ -1252,7 +1252,7 @@ static int find_next_track(demuxer_t *demuxer, demux_next_track_t *arg)
             if (!arg->wrap) {
                 if (arg->inc >= 0) {
                     j = i + 1;
-                    i = prog->nb_stream_indexes;
+                    i = priv->num_streams;
                 } else {
                     j = i - 1;
                     i = -1;
