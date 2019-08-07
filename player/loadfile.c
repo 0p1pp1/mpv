@@ -268,6 +268,8 @@ static void print_stream(struct MPContext *mpctx, struct track *t, bool indent)
         APPEND(b, " ");
     APPEND(b, "%s %-5s  --%s=%-2d", t->selected ? BLACK_CIRCLE : WHITE_CIRCLE,
            tname, selopt, t->user_tid);
+    if (t->demuxer_id >= 0)
+        APPEND(b, " [%04x]", t->demuxer_id);
     if (t->lang) {
         APPEND(b, " --%s=%-*s ", langopt, max_lang_length, t->lang);
     } else if (max_lang_length) {
