@@ -1219,6 +1219,7 @@ static void handle_track_pivot(struct MPContext *mpctx)
 
     }
     reset_playback_state(mpctx);
+    print_track_list(mpctx, NULL);
     mp_notify(mpctx, MPV_EVENT_TRACK_SWITCHED, NULL);
     mp_wakeup_core(mpctx);
 }
