@@ -262,6 +262,8 @@ static void print_stream(struct MPContext *mpctx, struct track *t)
     char b[2048] = {0};
     APPEND(b, " %3s %-5s", t->selected ? "(+)" : "", tname);
     APPEND(b, " --%s=%d", selopt, t->user_tid);
+    if (t->demuxer_id >= 0)
+        APPEND(b, " [%04x]", t->demuxer_id);
     if (t->lang && langopt)
         APPEND(b, " --%s=%s", langopt, t->lang);
     if (t->default_track)
