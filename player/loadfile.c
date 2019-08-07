@@ -275,6 +275,8 @@ static void print_stream(struct MPContext *mpctx, struct track *t)
         APPEND(b, "%s", TERM_ESC_GREY);
     }
     APPEND(b, "%-5s --%s=%-2d", tname, selopt, t->user_tid);
+    if (t->demuxer_id >= 0)
+        APPEND(b, " [%04x]", t->demuxer_id);
     if (t->lang) {
         APPEND(b, " --%s=%-7s", langopt, t->lang);
     } else if (tracks_have_lang) {
