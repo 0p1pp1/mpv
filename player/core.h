@@ -529,6 +529,10 @@ void mp_switch_track_n(struct MPContext *mpctx, int order,
 void mp_deselect_track(struct MPContext *mpctx, struct track *track);
 struct track *mp_track_by_tid(struct MPContext *mpctx, enum stream_type type,
                               int tid);
+struct track *mp_track_by_dmxid(struct MPContext *mpctx, enum stream_type type,
+                                int demx_id);
+struct demux_program;
+void fill_demux_prog_arg(struct MPContext *mpctx, struct demux_program *prog);
 void add_demuxer_tracks(struct MPContext *mpctx, struct demuxer *demuxer);
 bool mp_remove_track(struct MPContext *mpctx, struct track *track);
 struct playlist_entry *mp_next_file(struct MPContext *mpctx, int direction,

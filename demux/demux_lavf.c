@@ -219,6 +219,8 @@ typedef struct lavf_priv {
     AVIOContext *pb;
     struct stream_info **streams; // NULL for unknown streams
     int num_streams;
+    int cur_program;
+    bool new_prog_set;
     char *mime_type;
     double seek_delay;
 
@@ -824,11 +826,27 @@ static void add_new_streams(demuxer_t *demuxer)
 static void update_metadata(demuxer_t *demuxer)
 {
     lavf_priv_t *priv = demuxer->priv;
+    bool updated = false;
+
     if (priv->avfc->event_flags & AVFMT_EVENT_FLAG_METADATA_UPDATED) {
         mp_tags_copy_from_av_dictionary(demuxer->metadata, priv->avfc->metadata);
         priv->avfc->event_flags = 0;
-        demux_metadata_changed(demuxer);
+        updated |= true;
     }
+    if (priv->new_prog_set) {
+        int p;
+
+        for (p = 0; p < priv->avfc->nb_programs; p++)
+            if (priv->avfc->programs[p]->id == priv->cur_program)
+                break;
+        if (p < priv->avfc->nb_programs)
+            mp_tags_copy_from_av_dictionary(demuxer->metadata,
+                                            priv->avfc->programs[p]->metadata);
+        priv->new_prog_set = false;
+        updated |= true;
+    }
+    if (updated)
+        demux_metadata_changed(demuxer);
 }
 
 static int interrupt_cb(void *ctx)
@@ -1262,6 +1280,110 @@ static void demux_lavf_switched_tracks(struct demuxer *demuxer)
     select_tracks(demuxer, 0);
 }
 
+// if s1 is better than s2 (as a default stream)
+static bool
+is_better_sh(struct sh_stream *s1, struct sh_stream *s2, int pid, char **langs)
+{
+    if (pid >= 0)
+        return s1->demuxer_id == pid;
+
+    if (s2 == NULL)
+        return 1;
+
+    if (langs) {
+        int n1, n2;
+
+        n1 = n2 = 0;
+        while ( langs[n1] && (!s1->lang || strcmp(langs[n1], s1->lang)) ) n1++;
+        while ( langs[n2] && (!s2->lang || strcmp(langs[n2], s2->lang)) ) n2++;
+        if (n1 != n2)
+            return n1 < n2;
+    }
+    if (s1->default_track != s2->default_track)
+        return s1->default_track;
+    return s1->demuxer_id < s2->demuxer_id;
+}
+
+static bool demux_lavf_identify_program(struct demuxer *demuxer, demux_program_t *prog)
+{
+    lavf_priv_t *priv = demuxer->priv;
+
+    AVProgram *program;
+    int p, i;
+    int start;
+    struct sh_stream *v_sh, *a_sh, *s_sh;
+
+    // TODO: lock priv
+
+    if (priv->avfc->nb_programs < 1)
+        return false;
+
+    if (prog->progid <= -1) {
+        p = 0;
+        while (p < priv->avfc->nb_programs && priv->avfc->programs[p]->id != priv->cur_program)
+            p++;
+        if (p >= priv->avfc->nb_programs)
+            p = 0;
+        if (prog->progid != PROGID_KEEP_CURRENT)
+            p = (p + 1) % priv->avfc->nb_programs;
+    } else {
+        for (i = 0; i < priv->avfc->nb_programs; i++)
+            if (priv->avfc->programs[i]->id == prog->progid)
+                break;
+        if (i == priv->avfc->nb_programs)
+            return false;
+        p = i;
+    }
+    start = p;
+redo:
+    v_sh = a_sh = s_sh = NULL;
+    program = priv->avfc->programs[p];
+    for (i = 0; i < program->nb_stream_indexes; i++) {
+        struct stream_info *stream = priv->streams[program->stream_index[i]];
+        if (stream && stream->sh) {
+            switch (stream->sh->type) {
+            case STREAM_VIDEO:
+                if (is_better_sh(stream->sh, v_sh,
+                        prog->dmxid[STREAM_VIDEO], prog->langs[STREAM_VIDEO]))
+                    v_sh = stream->sh;
+                break;
+            case STREAM_AUDIO:
+                if (is_better_sh(stream->sh, a_sh,
+                        prog->dmxid[STREAM_AUDIO], prog->langs[STREAM_AUDIO]))
+                    a_sh = stream->sh;
+                break;
+            case STREAM_SUB:
+                if (is_better_sh(stream->sh, s_sh,
+                        prog->dmxid[STREAM_SUB], prog->langs[STREAM_SUB]))
+                    s_sh = stream->sh;
+                break;
+            }
+        }
+    }
+    if (prog->progid <= -1 &&
+        ((prog->dmxid[STREAM_VIDEO] >= 0 && !v_sh) ||
+         (prog->dmxid[STREAM_AUDIO] >= 0 && !a_sh) ||
+         (!v_sh && !a_sh))) {
+        p = (p + 1) % priv->avfc->nb_programs;
+        if (p == start)
+            return false;
+        goto redo;
+    }
+    priv->cur_program = prog->progid = program->id;
+    prog->dmxid[STREAM_VIDEO] = -2;
+    prog->dmxid[STREAM_AUDIO] = -2;
+    prog->dmxid[STREAM_SUB] = -2;
+    if (v_sh)
+        prog->dmxid[STREAM_VIDEO] = v_sh->demuxer_id;
+    if (a_sh)
+        prog->dmxid[STREAM_AUDIO] = a_sh->demuxer_id;
+    if (s_sh)
+        prog->dmxid[STREAM_SUB] = s_sh->demuxer_id;
+
+    priv->new_prog_set = true;
+    return true;
+}
+
 static void demux_close_lavf(demuxer_t *demuxer)
 {
     lavf_priv_t *priv = demuxer->priv;
@@ -1303,4 +1425,5 @@ const demuxer_desc_t demuxer_desc_lavf = {
     .close = demux_close_lavf,
     .seek = demux_seek_lavf,
     .switched_tracks = demux_lavf_switched_tracks,
+    .identify_program = demux_lavf_identify_program,
 };
