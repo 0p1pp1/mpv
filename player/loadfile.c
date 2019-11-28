@@ -694,6 +694,20 @@ struct track *mp_track_by_tid(struct MPContext *mpctx, enum stream_type type,
     return NULL;
 }
 
+struct track *
+mp_track_by_dmxid(struct MPContext *mpctx, enum stream_type type, int dmxid)
+{
+    if (dmxid < 0)
+        return NULL;
+
+    for (int n = 0; n < mpctx->num_tracks; n++) {
+        struct track *track = mpctx->tracks[n];
+        if (track->type == type && track->demuxer_id == dmxid)
+            return track;
+    }
+    return NULL;
+}
+
 bool mp_remove_track(struct MPContext *mpctx, struct track *track)
 {
     if (!track->is_external)
@@ -1368,6 +1382,45 @@ static void load_external_opts(struct MPContext *mpctx)
     }
 
     mp_waiter_wait(&wait);
+}
+
+static int
+track_tid_to_dmxid(struct MPContext *mpctx, enum stream_type type, int tid)
+{
+    struct track *t;
+
+    if (tid < 0)
+        return tid;
+
+#define DEMUX_ID_OPTION_HACK 1
+#ifdef DEMUX_ID_OPTION_HACK
+    /* HACK: treat user_tid>=16 as demuxer_id,
+       to allow users to specify demuxer_id in place of tid as an option */
+    if (tid >= 16)
+        return tid;
+#endif
+    t = mp_track_by_tid(mpctx, type, tid);
+    return (t && t->demuxer_id >= 0) ? t->demuxer_id : -2;
+}
+
+static const char *stream_type_str[STREAM_TYPE_COUNT] = {
+    "video", "audio", "subtitle"
+};
+
+// fill demux_prog_t arg except progid
+void fill_demux_prog_arg(struct MPContext *mpctx, demux_program_t *prog)
+{
+    for (int t = 0; t < STREAM_TYPE_COUNT; t++) {
+        int d;
+
+        prog->langs[t] = mpctx->opts->stream_lang[t];
+        prog->dmxid[t] = mpctx->opts->stream_id[0][t];
+        d = track_tid_to_dmxid(mpctx, t, prog->dmxid[t]);
+        if (d < 0 && prog->dmxid[t] >= 0)
+            MP_WARN(mpctx, "no demuxer_id for %s track:%d\n",
+                    stream_type_str[t], prog->dmxid[t]);
+        prog->dmxid[t] = d;
+    }
 }
 
 // Start playing the current playlist entry.

@@ -91,6 +91,15 @@ enum demux_event {
 struct demuxer;
 struct timeline;
 
+// arg of identify_program [INOUT]
+typedef struct demux_program {
+    int progid;      // program id [(IN)OUT] -1: any, -2: keep current prog ASAP
+    int dmxid[STREAM_TYPE_COUNT]; // [INOUT] -1: any(IN), -2: forbidden/none
+    char **langs[STREAM_TYPE_COUNT]; // [IN]
+} demux_program_t;
+// try to select the currently selected program if possible
+#define PROGID_KEEP_CURRENT -2
+
 /**
  * Demuxer description structure
  */
@@ -109,6 +118,7 @@ typedef struct demuxer_desc {
     void (*close)(struct demuxer *demuxer);
     void (*seek)(struct demuxer *demuxer, double rel_seek_secs, int flags);
     void (*switched_tracks)(struct demuxer *demuxer);
+    bool (*identify_program)(struct demuxer *demuxer, demux_program_t *prog);
     // See timeline.c
     void (*load_timeline)(struct timeline *tl);
 } demuxer_desc_t;

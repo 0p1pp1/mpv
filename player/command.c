@@ -2017,6 +2017,54 @@ static int property_list_tracks(void *ctx, struct m_property *prop,
                                 get_track_entry, mpctx);
 }
 
+static int mp_property_program(void *ctx, struct m_property *prop,
+                               int action, void *arg)
+{
+    MPContext *mpctx = ctx;
+    demux_program_t prog = {0};
+
+    struct demuxer *demuxer = mpctx->demuxer;
+    if (!demuxer || !mpctx->playback_initialized)
+        return M_PROPERTY_UNAVAILABLE;
+
+    switch (action) {
+    case M_PROPERTY_SWITCH:
+    case M_PROPERTY_SET:
+        if (action == M_PROPERTY_SET && arg)
+            prog.progid = *((int *) arg);
+        else
+            prog.progid = -1;
+        fill_demux_prog_arg(mpctx, &prog);
+        if (!demuxer->desc->identify_program ||
+            !demuxer->desc->identify_program(demuxer, &prog))
+            return M_PROPERTY_ERROR;
+
+        if (prog.dmxid[STREAM_VIDEO] < 0 && prog.dmxid[STREAM_AUDIO] < 0) {
+            MP_ERR(mpctx, "Selected program contains no audio or video streams!\n");
+            return M_PROPERTY_ERROR;
+        }
+        MP_INFO(mpctx, "selected program:%d.\n", prog.progid);
+        mp_switch_track(mpctx, STREAM_VIDEO,
+          mp_track_by_dmxid(mpctx, STREAM_VIDEO, prog.dmxid[STREAM_VIDEO]), 0);
+        mp_switch_track(mpctx, STREAM_AUDIO,
+          mp_track_by_dmxid(mpctx, STREAM_AUDIO, prog.dmxid[STREAM_AUDIO]), 0);
+        mp_switch_track(mpctx, STREAM_SUB,
+            mp_track_by_dmxid(mpctx, STREAM_SUB, prog.dmxid[STREAM_SUB]), 0);
+        print_track_list(mpctx, "Program switched:");
+        reset_playback_state(mpctx);
+        return M_PROPERTY_OK;
+    case M_PROPERTY_GET_TYPE:
+        *(struct m_option *)arg = (struct m_option){
+            .type = CONF_TYPE_INT,
+            .flags = CONF_RANGE,
+            .min = -1,
+            .max = (1 << 16) - 1,
+        };
+        return M_PROPERTY_OK;
+    }
+    return M_PROPERTY_NOT_IMPLEMENTED;
+}
+
 static int mp_property_hwdec_current(void *ctx, struct m_property *prop,
                                      int action, void *arg)
 {
@@ -3392,6 +3440,7 @@ static const struct m_property mp_properties_base[] = {
     {"video-aspect", mp_property_aspect},
     {"video-aspect-override", mp_property_video_aspect_override},
     {"vid", property_switch_track, .priv = (void *)(const int[]){0, STREAM_VIDEO}},
+    {"program", mp_property_program},
     {"hwdec-current", mp_property_hwdec_current},
     {"hwdec-interop", mp_property_hwdec_interop},
 
