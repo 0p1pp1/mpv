@@ -1982,27 +1982,73 @@ static int mp_property_dmono(void *ctx, struct m_property *prop,
 }
 
 static struct track* track_next(struct MPContext *mpctx, enum stream_type type,
-                                int direction, struct track *track)
+                                struct m_property_switch_arg *sarg,
+                                struct track *track)
 {
-    mp_assert(direction == -1 || direction == +1);
     struct track *prev = NULL, *next = NULL;
+    struct track *first = NULL, *last = NULL;
     bool seen = track == NULL;
+    bool dmx_retry = false;
+
+    // firstly check within the same program in the same demuxer
+    if (track && track->demuxer && track->demuxer->stream) {
+        demux_next_track_t arg;
+
+        arg.src_id = track->stream->demuxer_id;
+        arg.inc = sarg->inc;
+        arg.wrap = false;
+        if (track->demuxer->desc->find_next_track &&
+            track->demuxer->desc->find_next_track(track->demuxer, &arg)) {
+            if (arg.ret_id != -2)
+                return mp_track_by_dmxid(mpctx, track->type, arg.ret_id);
+            // retry wrapped, in-demuxer search after intra demuxer search
+            dmx_retry = sarg->wrap;
+        }
+    }
+
+    // next, search from tracks of a different demuxer.
     for (int n = 0; n < mpctx->num_tracks; n++) {
         struct track *cur = mpctx->tracks[n];
         if (cur->type == type) {
             if (cur == track) {
                 seen = true;
-            } else if (!cur->selected) {
+            } else if (!cur->selected &&
+                       (!track || cur->demuxer != track->demuxer)) {
+                if (!first)
+                    first = cur;
                 if (seen && !next) {
                     next = cur;
                 }
                 if (!seen || !track) {
                     prev = cur;
                 }
+                last = cur;
             }
         }
     }
-    return direction > 0 ? next : prev;
+
+    if (sarg->wrap) {
+        if (!next)
+            next = first;
+        if (!prev)
+            prev = last;
+
+        if (dmx_retry &&
+            ((!prev && sarg->inc < 0) || (!next && sarg->inc >= 0))) {
+            demux_next_track_t arg;
+
+            arg.src_id = track->stream->demuxer_id;
+            arg.inc = sarg->inc;
+            arg.wrap = true;
+            if (track->demuxer->desc->find_next_track &&
+                track->demuxer->desc->find_next_track(track->demuxer, &arg))
+                return mp_track_by_dmxid(mpctx, track->type, arg.ret_id);
+        }
+
+        if (!next || !prev)
+            next = prev = track;
+    }
+    return sarg->inc >= 0 ? next : prev;
 }
 
 static int mp_property_switch_track(void *ctx, struct m_property *prop,
@@ -2055,7 +2101,9 @@ static int mp_property_switch_track(void *ctx, struct m_property *prop,
                     // reset and move to the next track.
                     sh->dmono_mode = DMONO_MAIN;
                 }
-                track = track_next(mpctx, type, sarg->inc >= 0 ? +1 : -1, track);
+                track = track_next(mpctx, type, sarg, track);
+                MP_DBG(mpctx, "trying a switch to track:%d\n",
+                       track ? track->demuxer_id :-1);
                 if (mp_track_is_dmono(track))
                     track->stream->dmono_mode = sarg->inc >= 0 ?
                                                         DMONO_MAIN : DMONO_SUB;

@@ -271,7 +271,9 @@ static void print_stream(struct MPContext *mpctx, struct track *t, bool indent)
     if (t->demuxer_id >= 0)
         APPEND(b, " [%04x]", t->demuxer_id);
 
-    if (t->type == STREAM_AUDIO && s && s->is_dmono) {
+    if (t->type == STREAM_AUDIO && t->stream && t->stream->is_dmono) {
+        struct sh_stream *s = t->stream;
+
         APPEND(b, " --%s=", langopt);
         if (s->dmono_mode != DMONO_SUB)
             APPEND(b, "[");
@@ -284,8 +286,7 @@ static void print_stream(struct MPContext *mpctx, struct track *t, bool indent)
         APPEND(b, "%s", s->lang_sub ? s->lang_sub : t->lang);
         if (s->dmono_mode != DMONO_MAIN)
             APPEND(b, "]");
-    }
-
+    } else
     if (t->lang) {
         APPEND(b, " --%s=%-*s ", langopt, max_lang_length, t->lang);
     } else if (max_lang_length) {

@@ -374,8 +374,40 @@ char *mp_format_track_metadata(void *ctx, struct track *t, bool add_lang)
 
     bstr_xappend0(ctx, &dst, "(");
 
-    if (add_lang && t->lang)
-        bstr_xappend_asprintf(ctx, &dst, "%s ", t->lang);
+    if (add_lang) {
+        char *lang = t->lang;
+        char buf[64];
+        char *sub_ch = "";
+
+        if (mp_track_is_dmono(t)) {
+            struct sh_stream *sh = t->stream;
+
+            switch (sh->dmono_mode) {
+            case DMONO_SUB:
+                sub_ch = "sub ";
+                if (sh->lang_sub)
+                    lang = sh->lang_sub;
+                break;
+            case DMONO_BOTH:
+                sub_ch = "main,sub ";
+                snprintf(buf, sizeof(buf), "%s,%s",
+                         lang ? lang : "unknown",
+                         sh->lang_sub ? sh->lang_sub : lang ? lang : "unknown");
+                lang = buf;
+                break;
+            case DMONO_MAIN:
+            default:
+                sub_ch = "main ";
+            }
+        }
+        if (!lang && t->type != STREAM_VIDEO) {
+            lang = "unknown";
+        } else if (!lang) {
+            lang = "";
+        }
+
+        bstr_xappend_asprintf(ctx, &dst, "%s%s ", sub_ch, lang);
+    }
 
     bstr_xappend0(ctx, &dst, codec ? codec : "<unknown>");
 
