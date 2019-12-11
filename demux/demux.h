@@ -102,6 +102,14 @@ typedef struct demux_program {
 // try to select the currently selected program if possible
 #define PROGID_KEEP_CURRENT -2
 
+// arg of find_next_track
+typedef struct demux_next_track {
+    int src_id;     // demuxer_id of the track from where start searching.
+    int inc;        // same as struct m_property_switch_arg
+    bool wrap;
+    int ret_id;     // [OUT] demuxer_id of the next track, or -2 if none.
+} demux_next_track_t;
+
 /**
  * Demuxer description structure
  */
@@ -121,6 +129,7 @@ typedef struct demuxer_desc {
     void (*seek)(struct demuxer *demuxer, double rel_seek_secs, int flags);
     void (*switched_tracks)(struct demuxer *demuxer);
     bool (*identify_program)(struct demuxer *demuxer, demux_program_t *prog);
+    bool (*find_next_track)(struct demuxer *demuxer, demux_next_track_t *arg);
     // See timeline.c
     void (*load_timeline)(struct timeline *tl);
 } demuxer_desc_t;
