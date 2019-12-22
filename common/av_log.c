@@ -63,12 +63,14 @@ static bool log_print_prefix = true;
 
 static int av_log_level_to_mp_level(int av_level)
 {
-    if (av_level > AV_LOG_VERBOSE)
+    if (av_level > AV_LOG_DEBUG)
         return MSGL_TRACE;
-    if (av_level > AV_LOG_INFO)
+    if (av_level > AV_LOG_VERBOSE)
         return MSGL_DEBUG;
-    if (av_level > AV_LOG_WARNING)
+    if (av_level > AV_LOG_INFO)
         return MSGL_V;
+    if (av_level > AV_LOG_WARNING)
+        return MSGL_INFO;
     if (av_level > AV_LOG_ERROR)
         return MSGL_WARN;
     if (av_level > AV_LOG_FATAL)
