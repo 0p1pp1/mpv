@@ -614,9 +614,10 @@ struct track *select_default_track(struct MPContext *mpctx, int order,
             continue;
         if (duplicate_track(mpctx, order, type, track))
             continue;
-        if (pick && pick->demuxer_id == suggested_dmx_id)
+        if (pick && pick->demuxer_id >= 0 && pick->demuxer_id == suggested_dmx_id)
             continue;
-        if (!pick || track->demuxer_id == suggested_dmx_id ||
+        if (!pick ||
+            (track->demuxer_id >= 0 && track->demuxer_id == suggested_dmx_id) ||
             compare_track(track, pick, langs, prefer_forced, mpctx->opts))
             pick = track;
     }
