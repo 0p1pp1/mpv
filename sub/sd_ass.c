@@ -292,9 +292,13 @@ static void filter_and_add(struct sd *sd, struct demux_packet *pkt)
             return;
     }
 
-    ass_process_chunk(ctx->ass_track, pkt->buffer, pkt->len,
-                      llrint(pkt->pts * 1000),
-                      llrint(pkt->duration * 1000));
+    if (!strcmp(sd->codec->codec, "isdbsub"))
+        ass_process_data(ctx->ass_track, pkt->buffer, pkt->len);
+    else {
+        ass_process_chunk(ctx->ass_track, pkt->buffer, pkt->len,
+                          llrint(pkt->pts * 1000),
+                          llrint(pkt->duration * 1000));
+    }
 
     if (pkt != orig_pkt)
         talloc_free(pkt);
