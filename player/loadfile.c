@@ -335,7 +335,7 @@ void print_track_list(struct MPContext *mpctx, const char *msg)
 
 // try to recover from lost streams in mid stream (due to PMT change in TS).
 // prepare for the future gapless switch of tracks.
-static void recover_lost_streams(struct MPContext *mpctx)
+static bool recover_lost_streams(struct MPContext *mpctx)
 {
     demux_program_t prog;
 
@@ -343,7 +343,7 @@ static void recover_lost_streams(struct MPContext *mpctx)
     fill_demux_prog_arg(mpctx, &prog);
     if (!mpctx->demuxer->desc->identify_program ||
         !mpctx->demuxer->desc->identify_program(mpctx->demuxer, &prog))
-        return;    // there's nothing we can do.
+        return false;    // there's nothing we can do.
 
     MP_VERBOSE(mpctx, "setup switching to prog:%d v:%#06x a:%#06x s:%#06x\n",
                prog.progid, prog.dmxid[STREAM_VIDEO],
@@ -366,6 +366,7 @@ static void recover_lost_streams(struct MPContext *mpctx)
         demux_activate_stream(nxt->demuxer, nxt->stream, true);
     }
     // real track-switching should be done later at handle_track_pivot().
+    return true;
 }
 
 void update_demuxer_properties(struct MPContext *mpctx)
@@ -399,9 +400,11 @@ void update_demuxer_properties(struct MPContext *mpctx)
         !mpctx->next_track[STREAM_VIDEO] &&
         !mpctx->next_track[STREAM_AUDIO] &&
         !mpctx->next_track[STREAM_SUB]) {
+        bool ret = true;
         if (mpctx->opts->stream_auto_sel)
-            recover_lost_streams(mpctx);
-        demuxer->events &= ~DEMUX_EVENT_NOSTREAM;
+            ret = recover_lost_streams(mpctx);
+        if (ret)
+            demuxer->events &= ~DEMUX_EVENT_NOSTREAM;
     }
     if (events & DEMUX_EVENT_METADATA) {
         struct mp_tags *info =
