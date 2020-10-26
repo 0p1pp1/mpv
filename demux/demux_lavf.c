@@ -767,14 +767,13 @@ static void handle_new_stream(demuxer_t *demuxer, int i)
     default: ;
     }
 
-    struct stream_info *info = talloc_zero(priv, struct stream_info);
-    *info = (struct stream_info){
+    MP_VERBOSE(demuxer, "adding/updating stream info for pid:%04x %d\n",
+               st->id, codec->codec_type);
+    *(priv->streams[i]) = (struct stream_info){
         .sh = sh,
         .last_key_pts = MP_NOPTS_VALUE,
         .highest_pts = MP_NOPTS_VALUE,
     };
-    assert(priv->num_streams == i); // directly mapped
-    MP_TARRAY_APPEND(priv, priv->streams, priv->num_streams, info);
 
     if (sh) {
         sh->ff_index = st->index;
@@ -870,9 +869,9 @@ static void check_pid_change(demuxer_t *demuxer)
         if (av_find_program_from_stream(priv->avfc, NULL, sh->ff_index))
             continue;
         if (!priv->in_track_pivot) {
-            demux_set_event(demuxer, DEMUX_EVENT_NOSTREAM);
             MP_INFO(demuxer, "LOST PID! %04x\n", sh->demuxer_id);
         }
+        demux_set_event(demuxer, DEMUX_EVENT_NOSTREAM);
         priv->in_track_pivot = true;
         break;
     }
@@ -885,8 +884,18 @@ static void check_pid_change(demuxer_t *demuxer)
 static void add_new_streams(demuxer_t *demuxer)
 {
     lavf_priv_t *priv = demuxer->priv;
-    while (priv->num_streams < priv->avfc->nb_streams)
-        handle_new_stream(demuxer, priv->num_streams);
+
+    for (int i = 0; i < priv->num_streams; i++)
+        if (priv->streams[i] && !priv->streams[i]->sh
+            && priv->avfc->streams[i]->program_num != AVMEDIA_TYPE_UNKNOWN
+            && priv->avfc->streams[i]->codecpar->codec_type != AVMEDIA_TYPE_DATA)
+            handle_new_stream(demuxer, i);
+
+    while (priv->num_streams < priv->avfc->nb_streams) {
+        struct stream_info *info = talloc_zero(priv, struct stream_info);
+        MP_TARRAY_APPEND(priv, priv->streams, priv->num_streams, info);
+        handle_new_stream(demuxer, priv->num_streams - 1);
+    }
 }
 
 static void update_stream_props(struct sh_stream *sh, struct mp_tags *tags)
@@ -1700,7 +1709,14 @@ redo:
     v_sh = a_sh = s_sh = NULL;
     program = priv->avfc->programs[p];
     for (i = 0; i < program->nb_stream_indexes; i++) {
-        struct stream_info *stream = priv->streams[program->stream_index[i]];
+        int idx = program->stream_index[i];
+        struct stream_info *stream;
+
+        if (idx >= priv->num_streams) {
+            MP_VERBOSE(demuxer, "PMT of prog:%d may not be ready yet.\n", program->id);
+            return false;
+        }
+        stream = priv->streams[idx];
         if (stream && stream->sh) {
             switch (stream->sh->type) {
             case STREAM_VIDEO:
