@@ -767,8 +767,6 @@ static void handle_new_stream(demuxer_t *demuxer, int i)
     default: ;
     }
 
-    MP_VERBOSE(demuxer, "adding/updating stream info for pid:%04x %d\n",
-               st->id, codec->codec_type);
     *(priv->streams[i]) = (struct stream_info){
         .sh = sh,
         .last_key_pts = MP_NOPTS_VALUE,
@@ -776,6 +774,8 @@ static void handle_new_stream(demuxer_t *demuxer, int i)
     };
 
     if (sh) {
+        MP_VERBOSE(demuxer, "adding/updating stream info for pid:%04x %d\n",
+                   st->id, codec->codec_type);
         sh->ff_index = st->index;
         sh->codec->codec = mp_codec_from_av_codec_id(codec->codec_id);
         sh->codec->codec_tag = codec->codec_tag;

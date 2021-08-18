@@ -4618,6 +4618,8 @@ void demux_set_event(demuxer_t *demuxer, enum demux_event event)
 
     pthread_mutex_lock(&in->lock);
     in->events |= event;
+    if (in->wakeup_cb)
+        in->wakeup_cb(in->wakeup_cb_ctx);
     pthread_mutex_unlock(&in->lock);
 }
 

@@ -723,6 +723,9 @@ static void handle_update_cache(struct MPContext *mpctx)
         // demuxer underrun.
         need_wait = mpctx->demux_underrun && output_underrun;
     }
+    need_wait &= ! mpctx->next_track[STREAM_AUDIO] &&
+                 ! mpctx->next_track[STREAM_VIDEO] &&
+                 ! mpctx->next_track[STREAM_SUB];
 
     // Let the underrun flag "stick" around until the cache has fully recovered.
     // See logic where demux_underrun is used.
@@ -1228,6 +1231,15 @@ static void handle_eof(struct MPContext *mpctx)
      * outside of the video, and we do want to quit. */
     bool prevent_eof =
         mpctx->paused && mpctx->video_out && vo_has_frame(mpctx->video_out);
+
+    if ((mpctx->ao_chain && mpctx->next_track[STREAM_AUDIO] &&
+          (mpctx->audio_status == STATUS_EOF || mpctx->ao_chain->ao_underrun)) ||
+        (mpctx->vo_chain && mpctx->next_track[STREAM_VIDEO] &&
+          (mpctx->video_status == STATUS_EOF || mpctx->vo_chain->underrun)))
+    {
+        handle_track_pivot(mpctx);
+    }
+
     /* It's possible for the user to simultaneously switch both audio
      * and video streams to "disabled" at runtime. Handle this by waiting
      * rather than immediately stopping playback due to EOF.
@@ -1237,12 +1249,6 @@ static void handle_eof(struct MPContext *mpctx)
         mpctx->video_status == STATUS_EOF &&
         !mpctx->stop_play)
     {
-        if (mpctx->next_track[STREAM_VIDEO] ||
-            mpctx->next_track[STREAM_AUDIO] ||
-            mpctx->next_track[STREAM_SUB]) {
-            handle_track_pivot(mpctx);
-            return;
-        }
         mpctx->stop_play = AT_END_OF_FILE;
     }
 }
