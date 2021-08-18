@@ -41,7 +41,11 @@ cd build
 make install
 
 # ffmpeg
-FFMPEG_OPTIONS="--enable-libdemulti2 --enable-gnutls --enable-libopus"
+FFMPEG_OPTIONS="--enable-gnutls --enable-libopus"
+if ldconfig -p | grep -qs libdemulti2 ; then
+  FFMPEG_OPTIONS+=" --enable-libdemulti2"
+fi
+
 mkdir -p "$BUILD/ffmpeg/build"
 cd "$BUILD/ffmpeg/build"
 ../configure --prefix="$BUILD/build_libs" --enable-static --disable-shared --disable-doc --disable-debug --disable-programs --enable-pic --enable-gpl $FFMPEG_OPTIONS
