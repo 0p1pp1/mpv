@@ -625,9 +625,12 @@ static void ao_process(struct mp_filter *f)
         struct mp_frame frame = mp_pin_out_read(f->ppins[0]);
         if (frame.type == MP_FRAME_EOF) {
             MP_VERBOSE(mpctx, "got EOF with no data before it\n");
+            // do not signal eof, not to abort on a pid-swtiching.
+/*
             ao_c->out_eof = true;
             mpctx->audio_status = STATUS_DRAINING;
             mp_wakeup_core(mpctx);
+ */
         } else if (frame.type) {
             mp_pin_out_unread(f->ppins[0], frame);
         }
