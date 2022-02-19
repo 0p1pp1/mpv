@@ -100,7 +100,8 @@ struct lavc_conv *lavc_conv_create(struct mp_log *log, const char *codec_name,
     priv->avctx = avctx;
     priv->extradata = talloc_strndup(priv, avctx->subtitle_header,
                                      avctx->subtitle_header_size);
-    disable_styles(bstr0(priv->extradata));
+    if (codec->id != AV_CODEC_ID_ISDB_SUBTITLE)
+        disable_styles(bstr0(priv->extradata));
     return priv;
 
  error:
@@ -249,7 +250,8 @@ char **lavc_conv_decode(struct lavc_conv *priv, struct demux_packet *packet,
     } else if (got_sub) {
         *sub_pts = packet->pts + mp_pts_from_av(priv->cur.start_display_time,
                                                &avctx->time_base);
-        *sub_duration = priv->cur.end_display_time == UINT32_MAX ?
+        *sub_duration = priv->cur.end_display_time == UINT32_MAX ||
+                        priv->cur.end_display_time == 0 ?
                         UINT32_MAX :
                         mp_pts_from_av(priv->cur.end_display_time -
                                        priv->cur.start_display_time,
