@@ -267,7 +267,8 @@ static int init(struct sd *sd)
         if (!ctx->converter)
             return -1;
 
-        if (strcmp(sd->codec->codec, "eia_608") == 0)
+        if (strcmp(sd->codec->codec, "eia_608") == 0 ||
+            strcmp(sd->codec->codec, "isdbsub") == 0)
             ctx->duration_unknown = 1;
     }
 
@@ -295,6 +296,20 @@ static void filter_and_add(struct sd *sd, struct demux_packet *pkt)
             return;
     }
 
+    unsigned char *p = NULL;
+    if (!strcmp(sd->codec->codec, "isdbsub")) {
+        // skip read-order and layer fields.
+        p = strchr(pkt->buffer, ',');
+        if (p)
+            p = strchr(++p, ',');
+        if (p) {
+            ++p;
+            while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') ++p;
+        }
+    }
+    if (p && *p == '[')
+        ass_process_codec_private(ctx->ass_track, p, pkt->len - (p - pkt->buffer));
+    else
     ass_process_chunk(ctx->ass_track, pkt->buffer, pkt->len,
                       llrint(pkt->pts * 1000),
                       llrint(pkt->duration * 1000));
@@ -327,6 +342,35 @@ static bool check_packet_seen(struct sd *sd, int64_t pos)
 }
 
 #define UNKNOWN_DURATION (INT_MAX / 1000)
+#define MAX_PTS_DELTA (180 * 1000)
+
+static void fix_unknown_durations(ASS_Track *track)
+{
+    int n;
+
+    // note that multiple events might have the same Start,End,
+    // as we support multi-rects AVSubtitle.
+
+    for (n = track->n_events - 1;
+         n >= 1 && track->events[n - 1].Start == track->events[n].Start;
+         n--) /* empty */;
+    if (n <= 0)
+        return;
+
+    // note: Start(PTS) can wrap-around in some containers (like MPEG-TS),
+    // but playloop will issue a seek in that case and flush old events anyway.
+    if (!(track->events[n].Start - track->events[n - 1].Start > 0 &&
+          track->events[n].Start - track->events[n - 1].Start < MAX_PTS_DELTA))
+        return;
+
+    for (int i = n - 1;
+         i >= 0 && track->events[i].Start == track->events[n - 1].Start;
+         i--) {
+        if (track->events[i].Duration == UNKNOWN_DURATION * 1000)
+            track->events[i].Duration =
+                    track->events[n].Start - track->events[i].Start;
+    }
+}
 
 static void decode(struct sd *sd, struct demux_packet *packet)
 {
@@ -359,16 +403,7 @@ static void decode(struct sd *sd, struct demux_packet *packet)
             filter_and_add(sd, &pkt2);
         }
         if (ctx->duration_unknown) {
-            for (int n = track->n_events - 2; n >= 0; n--) {
-                if (track->events[n].Duration == UNKNOWN_DURATION * 1000) {
-                    if (track->events[n].Start != track->events[n + 1].Start) {
-                        track->events[n].Duration = track->events[n + 1].Start -
-                                                    track->events[n].Start;
-                    } else {
-                        track->events[n].Duration = track->events[n + 1].Duration;
-                    }
-                }
-            }
+            fix_unknown_durations(track);
         }
     } else {
         // Note that for this packet format, libass has an internal mechanism
@@ -557,6 +592,11 @@ static struct sub_bitmaps *get_bitmaps(struct sd *sd, struct mp_osd_res dim,
         if (isnormal(par))
             scale *= par;
     }
+    if (strcmp(sd->codec->codec, "isdbsub") == 0) {
+        dim.mt = dim.mb = dim.ml = dim.mr = 0;
+        scale = 0.;
+    }
+
     configure_ass(sd, &dim, converted, track);
     ass_set_pixel_aspect(renderer, scale);
     if (!converted && (!opts->ass_style_override ||
