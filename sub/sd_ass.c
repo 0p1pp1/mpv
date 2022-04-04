@@ -419,9 +419,6 @@ static void configure_ass(struct sd *sd, struct mp_osd_res *dim,
     struct sd_ass_priv *ctx = sd->priv;
     ASS_Renderer *priv = ctx->ass_renderer;
 
-    if (strcmp(sd->codec->codec, "isdbsub") == 0)
-        dim->mt = dim->mb = dim->ml = dim->mr = 0;
-
     ass_set_frame_size(priv, dim->w, dim->h);
     ass_set_margins(priv, dim->mt, dim->mb, dim->ml, dim->mr);
 
@@ -591,6 +588,11 @@ static struct sub_bitmaps *get_bitmaps(struct sd *sd, struct mp_osd_res dim,
         if (isnormal(par))
             scale *= par;
     }
+    if (strcmp(sd->codec->codec, "isdbsub") == 0) {
+        dim.mt = dim.mb = dim.ml = dim.mr = 0;
+        scale = 0.;
+    }
+
     configure_ass(sd, &dim, converted, track);
     ass_set_pixel_aspect(renderer, scale);
     if (!converted && (!opts->ass_style_override ||
