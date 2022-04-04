@@ -354,7 +354,7 @@ static void fix_unknown_durations(ASS_Track *track)
     for (n = track->n_events - 1;
          n >= 1 && track->events[n - 1].Start == track->events[n].Start;
          n--) /* empty */;
-    if (n == 0)
+    if (n <= 0)
         return;
 
     // note: Start(PTS) can wrap-around in some containers (like MPEG-TS),
