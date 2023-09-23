@@ -72,17 +72,14 @@ jobs:
     #   If the Autobuild fails above, remove it and uncomment the following three lines.
     #   modify them (or add more) to build your code if your project, please refer to the EXAMPLE below for guidance.
 
-    - name: Install dependencies
-      run: |
-        ./bootstrap.py
-        # workaround to avoid "fatal: unsafe repository" error
-        git config --global --add safe.directory "$GITHUB_WORKSPACE"
-
     # - run: |
     #     echo "Run, Build Application using script"
     #     ./location_of_script_within_repo/buildscript.sh
     - name: Build with meson
+      if: ${{ matrix.language == 'cpp' }}
       run: |
+        ./bootstrap.py
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
         meson setup build \
           -Dcdda=enabled       \
           -Ddvbin=enabled      \
