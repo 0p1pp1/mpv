@@ -107,7 +107,9 @@ struct lavc_conv *lavc_conv_create(struct mp_log *log, const char *codec_name,
     priv->avctx = avctx;
     priv->extradata = talloc_strndup(priv, avctx->subtitle_header,
                                      avctx->subtitle_header_size);
+#ifdef AV_CODEC_ID_ISDB_SUBTITLE
     if (codec->id != AV_CODEC_ID_ISDB_SUBTITLE)
+#endif
         disable_styles(bstr0(priv->extradata));
     return priv;
 
