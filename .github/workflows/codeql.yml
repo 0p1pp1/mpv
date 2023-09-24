@@ -82,10 +82,9 @@ jobs:
           libva-dev libvdpau-dev libxinerama-dev \
           libxkbcommon-dev libxpresent-dev libxss-dev \
           libxv-dev liblua5.2-dev libgbm-dev libmujs-dev \
-          libpipewire-0.3-dev librubberband-dev \
-          # libshaderc-dev \
           libuchardet-dev libvulkan-dev wayland-protocols \
           libwayland-dev zlib1g-dev python3-docutils
+          # libshaderc-dev not found...
  
     - name: Build with meson
       if: ${{ matrix.language == 'cpp' }}
