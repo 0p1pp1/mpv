@@ -25,10 +25,6 @@ jobs:
     #   - https://gh.io/using-larger-runners
     # Consider using larger runners for possible analysis time improvements.
     runs-on: 'ubuntu-latest'
-    container:
-      image: "registry.opensuse.org/home/mia/images/images/mpv-ci:stable-deps"
-      env:
-        CC: "gcc"
     timeout-minutes: ${{ (matrix.language == 'swift' && 120) || 360 }}
     permissions:
       actions: read
@@ -75,10 +71,25 @@ jobs:
     # - run: |
     #     echo "Run, Build Application using script"
     #     ./location_of_script_within_repo/buildscript.sh
+    - name: Install build deps
+      if: ${{ matrix.language == 'cpp' }}
+      run: |
+        sudo apt-get -y install meson libasound2-dev \
+          libavdevice-dev libjack-dev libpulse-dev \
+          libarchive-dev libass-dev libbluray-dev \
+          libcdio-paranoia-dev libdrm-dev libdvdnav-dev \
+          libglvnd-dev libjpeg-dev libplacebo-dev \
+          libva-dev libvdpau-dev libxinerama-dev \
+          libxkbcommon-dev libxpresent-dev libxss-dev \
+          libxv-dev liblua5.2-dev libgbm-dev libmujs-dev \
+          libpipewire-0.3-dev librubberband-dev \
+          # libshaderc-dev \
+          libuchardet-dev libvulkan-dev wayland-protocols \
+          libwayland-dev zlib1g-dev python3-docutils
+ 
     - name: Build with meson
       if: ${{ matrix.language == 'cpp' }}
       run: |
-        ./bootstrap.py
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
         meson setup build \
           -Dcdda=enabled       \
