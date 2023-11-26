@@ -654,8 +654,13 @@ static char **process_langs(char **in)
 static const char *get_audio_lang(struct MPContext *mpctx)
 {
     // If we have a single current audio track, this is simple.
-    if (mpctx->current_track[0][STREAM_AUDIO])
-        return mpctx->current_track[0][STREAM_AUDIO]->lang;
+    struct track *t_audio = mpctx->current_track[0][STREAM_AUDIO];
+    if (t_audio) {
+        if (t_audio->stream && t_audio->stream->is_dmono
+            && t_audio->stream->dmono_mode == DMONO_SUB)
+            return t_audio->stream->lang_sub;
+        return t_audio->lang;
+    }
 
     const char *ret = NULL;
 
