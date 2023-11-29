@@ -399,7 +399,9 @@ char *mp_format_track_metadata(void *ctx, struct track *t, bool add_lang)
             default:
                 sub_ch = "main ";
             }
-        }
+        } else if (mp_track_is_ml_sub(t) && t->stream->sub_lang_tag == 1)
+            lang = t->stream->lang_sub;
+
         if (!lang && t->type != STREAM_VIDEO) {
             lang = "unknown";
         } else if (!lang) {
