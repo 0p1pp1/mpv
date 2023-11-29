@@ -728,7 +728,7 @@ struct track *select_default_track(struct MPContext *mpctx, int order,
     int preferred_program = (mpctx->progid > 0) ? mpctx->progid :
                             (type != STREAM_VIDEO && mpctx->current_track[0][STREAM_VIDEO]) ?
                             mpctx->current_track[0][STREAM_VIDEO]->program_id : -1;
-    if (tid == -2)
+    if (tid == -2 || suggested_dmx_id == -2)
         return NULL;
     char **langs = process_langs(opts->stream_lang[type]);
     bool os_langs = false;
