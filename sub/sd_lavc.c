@@ -694,6 +694,15 @@ static int control(struct sd *sd, enum sd_ctrl cmd, void *arg)
     case SD_CTRL_SET_VIDEO_PARAMS:
         priv->video_params = *(struct mp_image_params *)arg;
         return CONTROL_OK;
+    case SD_CTRL_SET_LANG_TAG: {
+        int tag = *(int *)arg;
+        int r;
+
+        if (tag < 0 || tag > 1)
+            return CONTROL_FALSE;
+        r = av_opt_set_int(priv->avctx, "lang_tag", tag, AV_OPT_SEARCH_CHILDREN);
+        return r == 0 ? CONTROL_OK : CONTROL_FALSE;
+    }
     default:
         return CONTROL_UNKNOWN;
     }

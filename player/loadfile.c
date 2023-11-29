@@ -291,8 +291,20 @@ static void print_stream(struct MPContext *mpctx, struct track *t)
         APPEND(b, "%s", s->lang_sub ? s->lang_sub : t->lang);
         if (s->dmono_mode != DMONO_MAIN)
             APPEND(b, "]");
-    }
-
+    } else if (mp_track_is_ml_sub(t)) {
+        APPEND(b, " --%s=", langopt);
+        if (s->sub_lang_tag == 0)
+            APPEND(b, "[");
+        APPEND(b, "%s", t->lang);
+        if (s->sub_lang_tag == 0)
+            APPEND(b, "]");
+        APPEND(b, "/");
+        if (s->sub_lang_tag == 1)
+            APPEND(b, "[");
+        APPEND(b, "%s", s->lang_sub);
+        if (s->sub_lang_tag == 1)
+            APPEND(b, "]");
+    } else
     if (t->lang) {
         APPEND(b, " --%s=%-7s", langopt, t->lang);
     } else if (tracks_have_lang) {
@@ -539,6 +551,15 @@ void add_demuxer_tracks(struct MPContext *mpctx, struct demuxer *demuxer)
         add_stream_track(mpctx, demuxer, demux_get_stream(demuxer, n));
 }
 
+static int match_lang_sub(char **langs, struct track *track)
+{
+    int r1, r2;
+
+    r1 = mp_match_lang(langs, track->lang);
+    r2 = track->stream ? mp_match_lang(langs, track->stream->lang_sub) : 0;
+    return (r1 > r2) ? r1 : r2;
+}
+
 /* Get the track wanted by the user.
  * tid is the track ID requested by the user (-2: deselect, -1: default)
  * lang is a string list, NULL is same as empty list
@@ -583,9 +604,9 @@ static bool compare_track(struct track *t1, struct track *t2, char **langs, bool
             return t1->program_id == preferred_program;
     }
     int l1 = mp_match_lang(langs, t1->lang), l2 = mp_match_lang(langs, t2->lang);
-    int l1s = (t1->stream && t1->stream->is_dmono) ?
+    int l1s = (t1->stream && t1->stream->lang_sub) ?
                     mp_match_lang(langs, t1->stream->lang_sub) : 0;
-    int l2s = (t2->stream && t2->stream->is_dmono) ?
+    int l2s = (t2->stream && t2->stream->lang_sub) ?
                     mp_match_lang(langs, t2->stream->lang_sub) : 0;
     if (l1s > l1) l1 = l1s;
     if (l2s > l2) l2 = l2s;
@@ -741,7 +762,7 @@ struct track *select_default_track(struct MPContext *mpctx, int order,
             bool audio_matches = audio_lang && track->lang && !strcasecmp(audio_lang, track->lang);
             bool forced = track->forced_track && (opts->subs_fallback_forced == 2 ||
                           (audio_matches && opts->subs_fallback_forced == 1));
-            bool lang_match = !os_langs && mp_match_lang(langs, track->lang) > 0;
+            bool lang_match = !os_langs && match_lang_sub(langs, track) > 0;
             bool subs_fallback = (track->is_external && !track->no_default) || opts->subs_fallback == 2 ||
                                  (opts->subs_fallback == 1 && track->default_track);
             bool subs_matching_audio = (!mp_match_lang(langs, audio_lang) || opts->subs_with_matching_audio == 2 ||
@@ -1656,6 +1677,12 @@ static void load_external_opts(struct MPContext *mpctx)
     mp_waiter_wait(&wait);
 }
 
+bool mp_track_is_ml_sub(struct track *track)
+{
+    return (track && track->type == STREAM_SUB
+            && track->stream && track->stream->lang_sub);
+}
+
 bool mp_track_is_dmono(struct track *track)
 {
     return (track && track->type == STREAM_AUDIO
@@ -1683,6 +1710,28 @@ void mp_select_dmono_sub_ch(struct MPContext *mpctx, struct track *track)
     MP_VERBOSE(mpctx, "dmono pid[%04x] set to use %s ch.\n", sh->demuxer_id,
                sh->dmono_mode == DMONO_MAIN ? "main"
                : sh->dmono_mode == DMONO_SUB ? "sub" : "both");
+}
+
+void mp_select_sub_lang(struct MPContext *mpctx, struct track *track)
+{
+    struct MPOpts *opts = mpctx->opts;
+    char **langs;
+    struct sh_stream *sh;
+
+    if (!track || track->type != STREAM_SUB || !track->stream)
+        return;
+
+    sh = track->stream;
+    sh->sub_lang_tag = 0;
+    if (!sh->lang_sub)
+        return;
+
+    langs = opts ? opts->stream_lang[STREAM_SUB] : NULL;
+    if (mp_match_lang(langs, sh->lang) > mp_match_lang(langs, sh->lang_sub))
+        sh->sub_lang_tag = 1;
+    sub_control(track->d_sub, SD_CTRL_SET_LANG_TAG, &sh->sub_lang_tag);
+    MP_VERBOSE(mpctx, "sub pid[%04x] set to use lang%d(%s).\n", sh->demuxer_id,
+               sh->sub_lang_tag, sh->sub_lang_tag == 0 ? sh->lang : sh->lang_sub);
 }
 
 static int
@@ -1898,6 +1947,7 @@ static void play_current_file(struct MPContext *mpctx)
                 sel = select_default_track(mpctx, i, t, prog.dmxid[t]);
             mpctx->current_track[i][t] = sel;
             mp_select_dmono_sub_ch(mpctx, sel);
+            mp_select_sub_lang(mpctx, sel);
         }
         mpctx->next_track[t] = NULL;
     }
