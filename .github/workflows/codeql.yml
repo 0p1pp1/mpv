@@ -74,7 +74,7 @@ jobs:
     - name: Install build deps
       if: ${{ matrix.language == 'cpp' }}
       run: |
-        sudo apt-get -y install meson libasound2-dev \
+        sudo apt-get -y install ninja-build libasound2-dev \
           libpipewire-0.3-dev \
           libavdevice-dev libjack-dev libpulse-dev \
           libarchive-dev libass-dev libbluray-dev \
@@ -86,7 +86,9 @@ jobs:
           libuchardet-dev libvulkan-dev wayland-protocols \
           libwayland-dev zlib1g-dev python3-docutils
           # libshaderc-dev not found...
- 
+        pip3 install --user meson
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+
     - name: Build with meson
       if: ${{ matrix.language == 'cpp' }}
       run: |
