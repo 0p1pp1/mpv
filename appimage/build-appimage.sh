@@ -69,7 +69,7 @@ cp -a /usr/local/lib/gconv/aribb24 AppDir/usr/local/lib/gconv/
 # initialize AppDir, bundle shared libraries, add desktop file and icon, use Qt plugin to bundle additional resources, and build AppImage, all in one command
 
 cp -a "$REPO_ROOT/appimage/"{apprun-hooks,fonts}  AppDir
-linuxdeploy-x86_64.AppImage --appdir AppDir -e mpv -i "AppDir/usr/share/icons/hicolor/scalable/apps/mpv.svg" -d "AppDir/usr/share/applications/mpv.desktop" -l /usr/local/lib/libsobacas.so.0 -l /usr/local/lib/libyakisoba.so.0 -l /usr/lib/libpcsclite.so.1 --output appimage
+linuxdeploy-x86_64.AppImage --appdir AppDir -e mpv -i "AppDir/usr/share/icons/hicolor/scalable/apps/mpv.svg" -d "AppDir/usr/share/applications/mpv.desktop" -l /usr/local/lib/libsobacas.so.0 -l /usr/local/lib/libyakisoba.so.0 -l /usr/lib/libpcsclite.so.1 -l /usr/lib/libplacebo.so.338 -l /usr/lib/libass.so.9 --output appimage
 
 
 # move built AppImage back into original CWD
