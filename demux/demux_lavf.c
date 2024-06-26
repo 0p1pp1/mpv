@@ -895,6 +895,7 @@ static void handle_new_stream(demuxer_t *demuxer, int i)
             sh->program_id = prog->id;
         sh->missing_timestamps = !!(priv->avif_flags & AVFMT_NOTIMESTAMPS);
         mp_tags_move_from_av_dictionary(sh->tags, &st->metadata);
+        st->event_flags &= ~AVSTREAM_EVENT_FLAG_METADATA_UPDATED;
         demux_add_sh_stream(demuxer, sh);
 
         // Unfortunately, there is no better way to detect PCM codecs, other
