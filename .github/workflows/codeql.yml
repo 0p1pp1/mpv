@@ -42,7 +42,7 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
@@ -86,8 +86,8 @@ jobs:
           libuchardet-dev libvulkan-dev wayland-protocols \
           libwayland-dev zlib1g-dev python3-docutils
           # libshaderc-dev not found...
-        pip3 install --user meson
-        echo "$HOME/.local/bin" >> $GITHUB_PATH
+        # pip3 install --user meson
+        # echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: Build with meson
       if: ${{ matrix.language == 'cpp' }}
