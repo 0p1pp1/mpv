@@ -84,10 +84,8 @@ jobs:
           libxkbcommon-dev libxpresent-dev libxss-dev \
           libxv-dev liblua5.2-dev libgbm-dev libmujs-dev \
           libuchardet-dev libvulkan-dev wayland-protocols \
-          libwayland-dev zlib1g-dev python3-docutils
+          libwayland-dev zlib1g-dev meson python3-docutils
           # libshaderc-dev not found...
-        # pip3 install --user meson
-        # echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: Build with meson
       if: ${{ matrix.language == 'cpp' }}
