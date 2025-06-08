@@ -74,6 +74,7 @@ jobs:
     - name: Install build deps
       if: ${{ matrix.language == 'cpp' }}
       run: |
+        sudo apt-get update
         sudo apt-get -y install ninja-build libasound2-dev \
           libpipewire-0.3-dev \
           libavdevice-dev libjack-dev libpulse-dev \
