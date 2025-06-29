@@ -814,6 +814,12 @@ static void handle_new_stream(demuxer_t *demuxer, int i)
     default: ;
     }
 
+    if (i < priv->num_streams) {
+        // This is an update of an existing stream.
+        priv->streams[i]->sh = sh;
+    } else {
+        // This is a new stream.
+
     struct stream_info *info = talloc_zero(priv, struct stream_info);
     *info = (struct stream_info){
         .sh = sh,
@@ -822,6 +828,7 @@ static void handle_new_stream(demuxer_t *demuxer, int i)
     };
     mp_assert(priv->num_streams == i); // directly mapped
     MP_TARRAY_APPEND(priv, priv->streams, priv->num_streams, info);
+    }
 
     if (sh) {
         MP_VERBOSE(demuxer, "adding/updating stream info for pid:%04x %d\n",
@@ -943,7 +950,7 @@ static void add_new_streams(demuxer_t *demuxer)
         if (priv->streams[i] && !priv->streams[i]->sh
             && priv->avfc->streams[i]->codecpar->codec_type != AVMEDIA_TYPE_UNKNOWN
             && priv->avfc->streams[i]->codecpar->codec_type != AVMEDIA_TYPE_DATA)
-            handle_new_stream(demuxer, i);
+            handle_new_stream(demuxer, i); // update existing stream
 
     while (priv->num_streams < priv->avfc->nb_streams) {
         handle_new_stream(demuxer, priv->num_streams);
